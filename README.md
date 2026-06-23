@@ -70,9 +70,18 @@ npx wrangler kv namespace create "AI_HUB_KV"
 ### 4. Set secrets
 
 ```bash
+# Gemini BYOK — Google AI Studio key (primary; bypasses Cloudflare AI Gateway balance)
+npx wrangler secret put GEMINI_API_KEY
+# Or sync from canonical Grudge .env:
+#   pwsh scripts/set-gemini-secret.ps1
+
 # VPS internal key (matches INTERNAL_API_KEY on VPS docker-compose)
 npx wrangler secret put VPS_INTERNAL_KEY
 ```
+
+**Gemini BYOK flow:** When `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) is set, all `google/*` models
+call `generativelanguage.googleapis.com` directly. Workers AI + Llama fallback still apply if BYOK
+is missing or fails.
 
 ### 5. Deploy
 

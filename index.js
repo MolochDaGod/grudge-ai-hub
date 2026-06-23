@@ -22,6 +22,7 @@ import {
   DEFAULT_GEMINI_MODEL,
   DEFAULT_CF_MODEL,
   isGeminiModel,
+  isGeminiByokConfigured,
   runWorkersAi,
 } from './lib/aiRunner.js';
 
@@ -232,6 +233,7 @@ async function handleHealth(env) {
     version: '1.0.0',
     environment: env.ENVIRONMENT,
     providers: {
+      gemini_byok: isGeminiByokConfigured(env) ? 'configured' : 'missing',
       workers_ai: 'available',
       vps_ai_agent: vpsStatus,
     },
@@ -699,21 +701,29 @@ async function handleAdminUsage(url, env) {
 
 /** GET /v1/admin/health */
 async function handleAdminHealth(env) {
-  // Check Workers AI (Gemini primary + @cf fallback probe)
+  const byokConfigured = isGeminiByokConfigured(env);
+  let geminiByokStatus = byokConfigured ? 'configured' : 'missing (set GEMINI_API_KEY secret)';
+
+  // Check Gemini (BYOK primary when configured, else Workers AI + @cf fallback)
   let workersAiStatus = 'unknown';
   try {
     const test = await runWorkersAi(env, DEFAULT_GEMINI_MODEL, {
       message: 'ping',
       generationConfig: { maxOutputTokens: 8 },
     });
-    workersAiStatus = test.text ? 'healthy' : 'degraded';
+    if (test.provider === 'google-gemini-byok') {
+      geminiByokStatus = test.text ? 'healthy' : 'degraded';
+      workersAiStatus = 'bypassed (byok active)';
+    } else {
+      workersAiStatus = test.text ? `healthy via ${test.provider}` : 'degraded';
+    }
   } catch (geminiErr) {
     try {
       const fallback = await env.AI.run(DEFAULT_CF_MODEL, {
         messages: [{ role: 'user', content: 'ping' }],
         max_tokens: 5,
       });
-      workersAiStatus = fallback.response ? `gemini-fallback-ok (${geminiErr.message})` : 'degraded';
+      workersAiStatus = fallback.response ? `cf-fallback-ok (${geminiErr.message})` : 'degraded';
     } catch (err) {
       workersAiStatus = `error: gemini=${geminiErr.message}; cf=${err.message}`;
     }
@@ -748,6 +758,7 @@ async function handleAdminHealth(env) {
   }
 
   return json({
+    gemini_byok: geminiByokStatus,
     workers_ai: workersAiStatus,
     vps_ai_agent: vpsStatus,
     d1: d1Status,
