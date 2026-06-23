@@ -230,7 +230,7 @@ async function handleHealth(env) {
   return json({
     status: 'ok',
     service: 'grudge-ai-hub',
-    version: '1.0.0',
+    version: '1.1.0',
     environment: env.ENVIRONMENT,
     providers: {
       gemini_byok: isGeminiByokConfigured(env) ? 'configured' : 'missing',
