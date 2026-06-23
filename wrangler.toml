@@ -1,4 +1,4 @@
-name               = "grudge-ai-hub"
+name               = "grudge-legion-ai"
 main               = "index.js"
 compatibility_date = "2025-03-01"
 account_id         = "ee475864561b02d4588180b8b9acf694"
@@ -28,15 +28,26 @@ id      = "486553dfacdc40b394e630b1cdfa97d6"
 # ── Environment variables ─────────────────────────────────────────────────────
 [vars]
 ENVIRONMENT              = "production"
+DEFAULT_AI_MODEL         = "google/gemini-3.5-flash"
+FALLBACK_AI_MODEL        = "@cf/meta/llama-3.1-8b-instruct-fast"
+CLOUDFLARE_ACCOUNT_ID    = "ee475864561b02d4588180b8b9acf694"
 VPS_AI_AGENT_URL         = "https://api.grudge-studio.com"
 VPS_INTERNAL_KEY         = ""
 RATE_LIMIT_RPM           = "60"
 RATE_LIMIT_RPM_ADMIN     = "300"
-MAX_PAYLOAD_BYTES        = "65536"
+MAX_PAYLOAD_BYTES        = "1048576"
 
-# ── Route: ai.grudge-studio.com ──────────────────────────────────────────────
+# ── Routes: Legion AI on ai.grudge-studio.com (specific paths beat edge platform) ──
 [[routes]]
-pattern = "ai.grudge-studio.com/*"
+pattern = "ai.grudge-studio.com/v1/*"
+zone_id = "e8c0c2ee3063f24eb31affddabf9730a"
+
+[[routes]]
+pattern = "ai.grudge-studio.com/health"
+zone_id = "e8c0c2ee3063f24eb31affddabf9730a"
+
+[[routes]]
+pattern = "legion-ai.grudge-studio.com/*"
 zone_id = "e8c0c2ee3063f24eb31affddabf9730a"
 
 # ── Staging ───────────────────────────────────────────────────────────────────

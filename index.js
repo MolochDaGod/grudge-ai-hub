@@ -2,13 +2,14 @@
  * GRUDA Legion AI Hub — Cloudflare Worker
  *
  * Centralized AI gateway for all Grudge Studio apps.
- * Workers AI (edge) with VPS ai-agent fallback/escalation.
+ * Workers AI (Gemini 3.5 Flash + @cf models) with VPS ai-agent fallback.
  *
  * Routes:
  *   GET    /health                  Health check (public)
  *   GET    /v1/agents               List agent roles (public)
  *   POST   /v1/chat                 General chat (auth)
  *   POST   /v1/agents/:role/chat    Role-specialized chat (auth)
+ *   POST   /v1/vision               Image + text (Gemini vision, auth)
  *   POST   /v1/image/generate       Image generation (auth)
  *   POST   /v1/embed                Text embeddings (auth)
  *   GET    /v1/admin/usage          Usage analytics (admin)
@@ -16,6 +17,13 @@
  *   GET    /v1/admin/config         Agent role config (admin)
  *   PUT    /v1/admin/config/:role   Update role config (admin)
  */
+
+import {
+  DEFAULT_GEMINI_MODEL,
+  DEFAULT_CF_MODEL,
+  isGeminiModel,
+  runWorkersAi,
+} from './lib/aiRunner.js';
 
 export default {
   async fetch(request, env) {
@@ -85,6 +93,11 @@ export default {
       const roleMatch = url.pathname.match(/^\/v1\/agents\/([a-z]+)\/chat$/);
       if (roleMatch && method === 'POST') {
         return corsResponse(await handleChat(request, env, auth, requestId, roleMatch[1]), origin);
+      }
+
+      // POST /v1/vision — Gemini multimodal (logo analysis, screenshots, etc.)
+      if (url.pathname === '/v1/vision' && method === 'POST') {
+        return corsResponse(await handleVision(request, env, auth, requestId), origin);
       }
 
       // POST /v1/image/generate
@@ -266,7 +279,7 @@ async function handleChat(request, env, auth, requestId, role) {
     return json({ error: 'Invalid JSON body' }, 400);
   }
 
-  const { message, messages, model, temperature, max_tokens } = body;
+  const { message, messages, model, temperature, max_tokens, maxOutputTokens } = body;
 
   // Accept either a single message string or a messages array
   let chatMessages;
@@ -293,22 +306,22 @@ async function handleChat(request, env, auth, requestId, role) {
     roleConfig = {
       role,
       system_prompt: `You are the GRUDA Legion AI assistant for Grudge Studio. Role: ${role}.`,
-      model: '@cf/meta/llama-3.1-8b-instruct',
+      model: DEFAULT_GEMINI_MODEL,
       temperature: 0.7,
       max_tokens: 1024,
       escalate_to_vps: 0,
     };
   }
 
-  // Build full messages array with system prompt
-  const fullMessages = [
-    { role: 'system', content: roleConfig.system_prompt },
-    ...chatMessages,
-  ];
-
   const useModel = model || roleConfig.model;
   const useTemp = temperature ?? roleConfig.temperature;
-  const useMaxTokens = max_tokens || roleConfig.max_tokens;
+  const useMaxTokens = maxOutputTokens ?? max_tokens ?? roleConfig.max_tokens;
+
+  // Build full messages array with system prompt (for @cf models and VPS fallback)
+  const fullMessages = [
+    { role: 'system', content: roleConfig.system_prompt },
+    ...chatMessages.filter((m) => m.role !== 'system'),
+  ];
 
   // ── Escalation check: if role requires VPS, go straight there ──
   if (roleConfig.escalate_to_vps) {
@@ -333,25 +346,48 @@ async function handleChat(request, env, auth, requestId, role) {
     });
   }
 
-  // ── Primary: Workers AI ───────────────────────────────────────
+  // ── Primary: Workers AI (Gemini contents API or @cf messages API) ──
+  const chatPayload = {
+    ...body,
+    messages: chatMessages,
+    message,
+    temperature: useTemp,
+    max_tokens: useMaxTokens,
+  };
+
+  async function tryAi(modelId) {
+    return runWorkersAi(env, modelId, chatPayload, roleConfig, fullMessages);
+  }
+
   try {
-    const aiResult = await env.AI.run(useModel, {
-      messages: fullMessages,
-      temperature: useTemp,
-      max_tokens: useMaxTokens,
-    });
+    let aiRun;
+    try {
+      aiRun = await tryAi(useModel);
+    } catch (primaryErr) {
+      const fb = env.FALLBACK_AI_MODEL || DEFAULT_CF_MODEL;
+      if (isGeminiModel(useModel) && useModel !== fb) {
+        aiRun = await tryAi(fb);
+        aiRun.fallback = true;
+        aiRun.fallback_reason = primaryErr.message;
+      } else {
+        throw primaryErr;
+      }
+    }
 
     const latency = Date.now() - start;
     await logRequest(env, {
-      requestId, apiKeyId: auth.keyId, role, provider: 'workers-ai',
-      model: useModel, status: 'ok', latencyMs: latency,
+      requestId, apiKeyId: auth.keyId, role, provider: aiRun.provider,
+      model: aiRun.model, status: 'ok', latencyMs: latency,
     });
 
     return json({
-      response: aiResult.response,
-      provider: 'workers-ai',
-      model: useModel,
+      response: aiRun.text,
+      raw: aiRun.result,
+      provider: aiRun.provider,
+      model: aiRun.model,
       role,
+      fallback: !!aiRun.fallback,
+      fallback_reason: aiRun.fallback_reason || undefined,
       request_id: requestId,
     });
   } catch (aiErr) {
@@ -384,6 +420,71 @@ async function handleChat(request, env, auth, requestId, role) {
       fallback: true,
       request_id: requestId,
     });
+  }
+}
+
+/** POST /v1/vision — Gemini multimodal analysis */
+async function handleVision(request, env, auth, requestId) {
+  const start = Date.now();
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const {
+    text,
+    prompt,
+    image,
+    imageBase64,
+    mimeType = 'image/png',
+    model,
+    systemInstruction,
+    generationConfig,
+  } = body;
+
+  const question = text || prompt;
+  const b64 = imageBase64 || image?.data || image;
+  if (!question || !b64) {
+    return json({ error: 'Provide "text" (or "prompt") and "imageBase64" (or "image")' }, 400);
+  }
+
+  const useModel = model || DEFAULT_GEMINI_MODEL;
+
+  try {
+    const aiRun = await runWorkersAi(env, useModel, {
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: question },
+            { inlineData: { mimeType: image?.mimeType || mimeType, data: b64 } },
+          ],
+        },
+      ],
+      systemInstruction,
+      generationConfig,
+    });
+
+    const latency = Date.now() - start;
+    await logRequest(env, {
+      requestId, apiKeyId: auth.keyId, role: 'vision', provider: aiRun.provider,
+      model: aiRun.model, status: 'ok', latencyMs: latency,
+    });
+
+    return json({
+      response: aiRun.text,
+      provider: aiRun.provider,
+      model: aiRun.model,
+      request_id: requestId,
+    });
+  } catch (err) {
+    await logRequest(env, {
+      requestId, apiKeyId: auth.keyId, role: 'vision', provider: 'workers-ai-gemini',
+      model: useModel, status: 'error', latencyMs: Date.now() - start, error: err.message,
+    });
+    return json({ error: 'Vision analysis failed', details: err.message, request_id: requestId }, 502);
   }
 }
 
@@ -598,16 +699,24 @@ async function handleAdminUsage(url, env) {
 
 /** GET /v1/admin/health */
 async function handleAdminHealth(env) {
-  // Check Workers AI
+  // Check Workers AI (Gemini primary + @cf fallback probe)
   let workersAiStatus = 'unknown';
   try {
-    const test = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
-      messages: [{ role: 'user', content: 'ping' }],
-      max_tokens: 5,
+    const test = await runWorkersAi(env, DEFAULT_GEMINI_MODEL, {
+      message: 'ping',
+      generationConfig: { maxOutputTokens: 8 },
     });
-    workersAiStatus = test.response ? 'healthy' : 'degraded';
-  } catch (err) {
-    workersAiStatus = `error: ${err.message}`;
+    workersAiStatus = test.text ? 'healthy' : 'degraded';
+  } catch (geminiErr) {
+    try {
+      const fallback = await env.AI.run(DEFAULT_CF_MODEL, {
+        messages: [{ role: 'user', content: 'ping' }],
+        max_tokens: 5,
+      });
+      workersAiStatus = fallback.response ? `gemini-fallback-ok (${geminiErr.message})` : 'degraded';
+    } catch (err) {
+      workersAiStatus = `error: gemini=${geminiErr.message}; cf=${err.message}`;
+    }
   }
 
   // Check VPS
@@ -738,6 +847,8 @@ const ALLOWED_ORIGINS = [
   'https://nexus-nemesis-game.vercel.app',
   'https://grudge-angeler.vercel.app',
   'https://grudge-rts.vercel.app',
+  'https://grudgecontrol.vercel.app',
+  'https://gruda-agent.vercel.app',
   'https://app.puter.com',
   'https://molochdagod.github.io',
 ];

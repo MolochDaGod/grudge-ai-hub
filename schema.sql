@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS agent_roles (
   display_name  TEXT NOT NULL,
   description   TEXT,
   system_prompt TEXT NOT NULL,
-  model         TEXT NOT NULL DEFAULT '@cf/meta/llama-3.1-8b-instruct',
+  model         TEXT NOT NULL DEFAULT 'google/gemini-3.5-flash',
   temperature   REAL NOT NULL DEFAULT 0.7,
   max_tokens    INTEGER NOT NULL DEFAULT 1024,
   escalate_to_vps INTEGER NOT NULL DEFAULT 0,  -- 1 = always forward to VPS ai-agent
