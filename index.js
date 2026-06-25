@@ -925,7 +925,7 @@ const ALLOWED_ORIGINS = [
   'https://grudge-angeler.vercel.app',
   'https://grudge-rts.vercel.app',
   'https://grudgecontrol.vercel.app',
-  'https://gruda-agent.vercel.app',
+
   'https://app.puter.com',
   'https://molochdagod.github.io',
 ];
