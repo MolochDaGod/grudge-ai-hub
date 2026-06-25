@@ -2,7 +2,7 @@
  * GRUDA Legion AI Hub — Cloudflare Worker
  *
  * Centralized AI gateway for all Grudge Studio apps.
- * Workers AI (Gemini 3.5 Flash + @cf models) with VPS ai-agent fallback.
+ * Workers AI (Gemini 3.5 Flash + @cf models). VPS fallback optional (off in production).
  *
  * Routes:
  *   GET    /health                  Health check (public)
@@ -226,13 +226,7 @@ async function checkRateLimit(kv, key, maxRpm) {
 
 /** GET /health */
 async function handleHealth(env) {
-  let vpsStatus = 'unknown';
-  try {
-    const resp = await fetch(`${env.VPS_AI_AGENT_URL}/health`, { signal: AbortSignal.timeout(5000) });
-    vpsStatus = resp.ok ? 'healthy' : `error-${resp.status}`;
-  } catch {
-    vpsStatus = 'unreachable';
-  }
+  const vpsStatus = await getVpsHealthStatus(env);
 
   return json({
     status: 'ok',
@@ -261,7 +255,7 @@ async function handleListAgents(env) {
         name: r.display_name,
         description: r.description,
         model: r.model,
-        escalates_to_vps: !!r.escalate_to_vps,
+        escalates_to_vps: !!r.escalate_to_vps && isVpsEnabled(env),
         enabled: !!r.enabled,
         endpoint: `/v1/agents/${r.role}/chat`,
       })),
@@ -332,8 +326,8 @@ async function handleChat(request, env, auth, requestId, role) {
     ...chatMessages.filter((m) => m.role !== 'system'),
   ];
 
-  // ── Escalation check: if role requires VPS, go straight there ──
-  if (roleConfig.escalate_to_vps) {
+  // ── Escalation check: if role requires VPS and VPS is enabled ──
+  if (roleConfig.escalate_to_vps && isVpsEnabled(env)) {
     const vpsResult = await escalateToVps(env, role, fullMessages, useTemp, useMaxTokens, requestId);
     const latency = Date.now() - start;
     await logRequest(env, {
@@ -402,18 +396,28 @@ async function handleChat(request, env, auth, requestId, role) {
   } catch (aiErr) {
     console.warn(`Workers AI failed for ${role}:`, aiErr.message);
 
-    // ── Fallback: escalate to VPS ─────────────────────────────
-    const vpsResult = await escalateToVps(env, role, fullMessages, useTemp, useMaxTokens, requestId);
-    const latency = Date.now() - start;
-    await logRequest(env, {
-      requestId, apiKeyId: auth.keyId, role,
-      provider: vpsResult.error ? 'fallback' : vpsResult.provider,
-      model: vpsResult.model, status: vpsResult.error ? 'error' : 'escalated',
-      latencyMs: latency, tokensIn: vpsResult.usage?.input, tokensOut: vpsResult.usage?.output,
-      error: vpsResult.error || `workers-ai-failed: ${aiErr.message}`,
-    });
+    if (isVpsEnabled(env)) {
+      const vpsResult = await escalateToVps(env, role, fullMessages, useTemp, useMaxTokens, requestId);
+      const latency = Date.now() - start;
+      await logRequest(env, {
+        requestId, apiKeyId: auth.keyId, role,
+        provider: vpsResult.error ? 'fallback' : vpsResult.provider,
+        model: vpsResult.model, status: vpsResult.error ? 'error' : 'escalated',
+        latencyMs: latency, tokensIn: vpsResult.usage?.input, tokensOut: vpsResult.usage?.output,
+        error: vpsResult.error || `workers-ai-failed: ${aiErr.message}`,
+      });
 
-    if (vpsResult.error) {
+      if (!vpsResult.error) {
+        return json({
+          response: vpsResult.content,
+          provider: vpsResult.provider,
+          model: vpsResult.model,
+          role,
+          fallback: true,
+          request_id: requestId,
+        });
+      }
+
       return json({
         error: 'All AI providers unavailable',
         details: { workers_ai: aiErr.message, vps: vpsResult.error },
@@ -421,14 +425,16 @@ async function handleChat(request, env, auth, requestId, role) {
       }, 503);
     }
 
-    return json({
-      response: vpsResult.content,
-      provider: vpsResult.provider,
-      model: vpsResult.model,
-      role,
-      fallback: true,
-      request_id: requestId,
+    await logRequest(env, {
+      requestId, apiKeyId: auth.keyId, role, provider: 'workers-ai',
+      model: useModel, status: 'error', latencyMs: Date.now() - start,
+      error: aiErr.message,
     });
+    return json({
+      error: 'AI provider unavailable',
+      details: { workers_ai: aiErr.message },
+      request_id: requestId,
+    }, 503);
   }
 }
 
@@ -599,7 +605,27 @@ const VPS_ROLE_MAP = {
   faction: '/ai/faction/intel',
 };
 
+function isVpsEnabled(env) {
+  const flag = String(env.VPS_ENABLED ?? 'false').toLowerCase();
+  if (flag === 'false' || flag === '0' || flag === 'off' || flag === 'no') return false;
+  return !!(env.VPS_AI_AGENT_URL && String(env.VPS_AI_AGENT_URL).trim());
+}
+
+async function getVpsHealthStatus(env) {
+  if (!isVpsEnabled(env)) return 'disabled';
+  try {
+    const resp = await fetch(`${env.VPS_AI_AGENT_URL}/health`, { signal: AbortSignal.timeout(5000) });
+    return resp.ok ? 'healthy' : `error-${resp.status}`;
+  } catch {
+    return 'unreachable';
+  }
+}
+
 async function escalateToVps(env, role, messages, temperature, maxTokens, requestId) {
+  if (!isVpsEnabled(env)) {
+    return { error: 'VPS escalation disabled' };
+  }
+
   const vpsUrl = env.VPS_AI_AGENT_URL;
   const internalKey = env.VPS_INTERNAL_KEY;
 
@@ -736,15 +762,7 @@ async function handleAdminHealth(env) {
     }
   }
 
-  // Check VPS
-  let vpsStatus = 'unknown';
-  try {
-    const resp = await fetch(`${env.VPS_AI_AGENT_URL}/health`, { signal: AbortSignal.timeout(5000) });
-    const data = await resp.json().catch(() => ({}));
-    vpsStatus = resp.ok ? 'healthy' : `error-${resp.status}`;
-  } catch (err) {
-    vpsStatus = `unreachable: ${err.message}`;
-  }
+  const vpsStatus = await getVpsHealthStatus(env);
 
   // Check D1
   let d1Status = 'unknown';
