@@ -6,6 +6,8 @@
  *
  * Routes:
  *   GET    /health                  Health check (public)
+ *   GET    /api/health              Fleet health alias (public)
+ *   GET    /                        GRUDA Agent UI (proxied from UI_ORIGIN)
  *   GET    /v1/agents               List agent roles (public)
  *   POST   /v1/chat                 General chat (auth)
  *   POST   /v1/agents/:role/chat    Role-specialized chat (auth)
@@ -47,12 +49,17 @@ export default {
 
       // ── Router ─────────────────────────────────────────────────
 
-      // Public routes
-      if (url.pathname === '/health' || url.pathname === '/v1/health') {
+      // Public gateway routes (worker-owned)
+      if (url.pathname === '/health' || url.pathname === '/v1/health' || url.pathname === '/api/health') {
         return corsResponse(await handleHealth(env), origin);
       }
       if (url.pathname === '/v1/agents' && method === 'GET') {
         return corsResponse(await handleListAgents(env), origin);
+      }
+
+      // UI + gruda-agent API — proxy to Vercel (handles ?grudge_token= SSO landing)
+      if (!url.pathname.startsWith('/v1/')) {
+        return proxyToUi(request, env, origin);
       }
 
       // ── Payload size guard ───────────────────────────────────
@@ -840,6 +847,47 @@ async function logRequest(env, { requestId, apiKeyId, role, provider, model, sta
   }
 }
 
+
+// ════════════════════════════════════════════════════════════════
+//  UI proxy (GRUDA Agent on Vercel)
+// ════════════════════════════════════════════════════════════════
+
+async function proxyToUi(request, env, origin) {
+  const uiOrigin = (env.UI_ORIGIN || 'https://grudaagent.vercel.app').replace(/\/$/, '');
+  const src = new URL(request.url);
+  const target = new URL(src.pathname + src.search, uiOrigin + '/');
+
+  const headers = new Headers(request.headers);
+  headers.set('Host', new URL(uiOrigin).host);
+  headers.set('X-Forwarded-Host', src.host);
+  headers.set('X-Forwarded-Proto', src.protocol.replace(':', ''));
+
+  const init = {
+    method: request.method,
+    headers,
+    redirect: 'manual',
+  };
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    init.body = request.body;
+  }
+
+  try {
+    const upstream = await fetch(target.toString(), init);
+    const respHeaders = new Headers(upstream.headers);
+    respHeaders.delete('content-security-policy');
+    return corsResponse(new Response(upstream.body, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: respHeaders,
+    }), origin);
+  } catch (err) {
+    return corsResponse(json({
+      error: 'AI Hub UI unavailable',
+      details: err.message,
+      ui_origin: uiOrigin,
+    }, 502), origin);
+  }
+}
 
 // ════════════════════════════════════════════════════════════════
 //  Helpers
