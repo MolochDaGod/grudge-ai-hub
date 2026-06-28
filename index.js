@@ -27,13 +27,28 @@ import {
   isGeminiByokConfigured,
   runWorkersAi,
 } from './lib/aiRunner.js';
+import { Observatory } from './lib/observatory-client.js';
+
+const OBS_ENDPOINT = 'https://grudge-fleet-harbor.grudge.workers.dev/api/observatory';
+
+function fleetObs(env, ctx) {
+  if (!env.OBSERVATORY_KEY) return null;
+  return new Observatory({
+    endpoint: OBS_ENDPOINT,
+    source: 'grudge-ai-hub',
+    key: env.OBSERVATORY_KEY,
+    waitUntil: ctx.waitUntil.bind(ctx),
+  });
+}
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const method = request.method;
     const origin = request.headers.get('Origin') || '';
     const requestId = crypto.randomUUID();
+    const obs = fleetObs(env, ctx);
+    const t0 = Date.now();
 
     // ── CORS preflight ─────────────────────────────────────────
     if (method === 'OPTIONS') {
@@ -44,22 +59,22 @@ export default {
       // ── Maintenance mode check ─────────────────────────────────
       const maintenance = await env.KV.get('flag:maintenance');
       if (maintenance === 'true' && !url.pathname.startsWith('/v1/admin')) {
-        return corsResponse(json({ error: 'AI Hub is under maintenance', retry_after: 60 }, 503), origin);
+        return finish(obs, request, corsResponse(json({ error: 'AI Hub is under maintenance', retry_after: 60 }, 503), origin), t0);
       }
 
       // ── Router ─────────────────────────────────────────────────
 
       // Public gateway routes (worker-owned)
       if (url.pathname === '/health' || url.pathname === '/v1/health' || url.pathname === '/api/health') {
-        return corsResponse(await handleHealth(env), origin);
+        return finish(obs, request, corsResponse(await handleHealth(env), origin), t0);
       }
       if (url.pathname === '/v1/agents' && method === 'GET') {
-        return corsResponse(await handleListAgents(env), origin);
+        return finish(obs, request, corsResponse(await handleListAgents(env), origin), t0);
       }
 
       // UI + gruda-agent API — proxy to Vercel (handles ?grudge_token= SSO landing)
       if (!url.pathname.startsWith('/v1/')) {
-        return proxyToUi(request, env, origin);
+        return finish(obs, request, await proxyToUi(request, env, origin), t0);
       }
 
       // ── Payload size guard ───────────────────────────────────
@@ -67,14 +82,14 @@ export default {
       if (method === 'POST') {
         const contentLength = parseInt(request.headers.get('content-length') || '0', 10);
         if (contentLength > maxBytes) {
-          return corsResponse(json({ error: `Payload too large (max ${maxBytes} bytes)` }, 413), origin);
+          return finish(obs, request, corsResponse(json({ error: `Payload too large (max ${maxBytes} bytes)` }, 413), origin), t0);
         }
       }
 
       // ── Auth required beyond this point ────────────────────────
       const auth = await authenticate(request, env);
       if (auth.error) {
-        return corsResponse(json({ error: auth.error }, 401), origin);
+        return finish(obs, request, corsResponse(json({ error: auth.error }, 401), origin), t0);
       }
 
       // ── Rate limiting ──────────────────────────────────────────
@@ -87,35 +102,35 @@ export default {
       const limited = await checkRateLimit(env.KV, rateKey, rpm);
       if (limited) {
         await logRequest(env, { requestId, apiKeyId: auth.keyId, role: null, provider: 'none', model: null, status: 'rate-limited', latencyMs: 0 });
-        return corsResponse(json({ error: 'Rate limit exceeded', retry_after: 60 }, 429), origin);
+        return finish(obs, request, corsResponse(json({ error: 'Rate limit exceeded', retry_after: 60 }, 429), origin), t0);
       }
 
       // ── Authenticated routes ───────────────────────────────────
 
       // POST /v1/chat
       if (url.pathname === '/v1/chat' && method === 'POST') {
-        return corsResponse(await handleChat(request, env, auth, requestId, 'general'), origin);
+        return finish(obs, request, corsResponse(await handleChat(request, env, auth, requestId, 'general'), origin), t0);
       }
 
       // POST /v1/agents/:role/chat
       const roleMatch = url.pathname.match(/^\/v1\/agents\/([a-z]+)\/chat$/);
       if (roleMatch && method === 'POST') {
-        return corsResponse(await handleChat(request, env, auth, requestId, roleMatch[1]), origin);
+        return finish(obs, request, corsResponse(await handleChat(request, env, auth, requestId, roleMatch[1]), origin), t0);
       }
 
       // POST /v1/vision — Gemini multimodal (logo analysis, screenshots, etc.)
       if (url.pathname === '/v1/vision' && method === 'POST') {
-        return corsResponse(await handleVision(request, env, auth, requestId), origin);
+        return finish(obs, request, corsResponse(await handleVision(request, env, auth, requestId), origin), t0);
       }
 
       // POST /v1/image/generate
       if (url.pathname === '/v1/image/generate' && method === 'POST') {
-        return corsResponse(await handleImageGenerate(request, env, auth, requestId), origin);
+        return finish(obs, request, corsResponse(await handleImageGenerate(request, env, auth, requestId), origin), t0);
       }
 
       // POST /v1/embed
       if (url.pathname === '/v1/embed' && method === 'POST') {
-        return corsResponse(await handleEmbed(request, env, auth, requestId), origin);
+        return finish(obs, request, corsResponse(await handleEmbed(request, env, auth, requestId), origin), t0);
       }
 
       // ── Admin routes ───────────────────────────────────────────
@@ -139,13 +154,29 @@ export default {
         }
       }
 
-      return corsResponse(json({ error: 'Not found' }, 404), origin);
+      return finish(obs, request, corsResponse(json({ error: 'Not found' }, 404), origin), t0);
     } catch (err) {
+      obs?.error(String(err), { path: url.pathname, request_id: requestId });
       console.error('Unhandled error:', err);
       return corsResponse(json({ error: 'Internal server error', request_id: requestId }, 500), origin);
     }
   },
 };
+
+function finish(obs, request, response, t0) {
+  if (obs) {
+    const path = new URL(request.url).pathname;
+    if (!path.startsWith('/v1/admin')) {
+      obs.http({
+        method: request.method,
+        path,
+        status: response.status,
+        latency_ms: Date.now() - t0,
+      });
+    }
+  }
+  return response;
+}
 
 
 // ════════════════════════════════════════════════════════════════
