@@ -64,12 +64,19 @@ export default {
 
       // ── Router ─────────────────────────────────────────────────
 
-      // Public gateway routes (worker-owned)
+      // Public gateway routes (worker-owned) — no auth
       if (url.pathname === '/health' || url.pathname === '/v1/health' || url.pathname === '/api/health') {
         return finish(obs, request, corsResponse(await handleHealth(env), origin), t0);
       }
       if (url.pathname === '/v1/agents' && method === 'GET') {
         return finish(obs, request, corsResponse(await handleListAgents(env), origin), t0);
+      }
+      // Public model/catalog discovery (fleet clients + info site)
+      if ((url.pathname === '/v1/models' || url.pathname === '/v1/catalog') && method === 'GET') {
+        return finish(obs, request, corsResponse(await handlePublicModels(env), origin), t0);
+      }
+      if (url.pathname === '/v1/ssot' && method === 'GET') {
+        return finish(obs, request, corsResponse(handleSsotPointers(), origin), t0);
       }
 
       // UI + gruda-agent API — proxy to Vercel (handles ?grudge_token= SSO landing)
@@ -102,7 +109,10 @@ export default {
       const limited = await checkRateLimit(env.KV, rateKey, rpm);
       if (limited) {
         await logRequest(env, { requestId, apiKeyId: auth.keyId, role: null, provider: 'none', model: null, status: 'rate-limited', latencyMs: 0 });
-        return finish(obs, request, corsResponse(json({ error: 'Rate limit exceeded', retry_after: 60 }, 429), origin), t0);
+        const res = corsResponse(json({ error: 'Rate limit exceeded', retry_after: 60 }, 429), origin);
+        res.headers.set('Retry-After', '60');
+        res.headers.set('X-RateLimit-Limit', String(rpm));
+        return finish(obs, request, res, t0);
       }
 
       // ── Authenticated routes ───────────────────────────────────
@@ -161,6 +171,17 @@ export default {
       return corsResponse(json({ error: 'Internal server error', request_id: requestId }, 500), origin);
     }
   },
+
+  // Legacy AI_EVENTS consumer (kept so domain worker can redeploy while queue is still attached).
+  async queue(batch) {
+    for (const msg of batch.messages) {
+      try {
+        msg.ack();
+      } catch {
+        /* ignore */
+      }
+    }
+  },
 };
 
 function finish(obs, request, response, t0) {
@@ -188,10 +209,28 @@ async function authenticate(request, env) {
   const apiKey = header.startsWith('Bearer ') ? header.slice(7) : header;
 
   if (!apiKey) {
-    return { error: 'Missing Authorization header (Bearer <api-key>)' };
+    return { error: 'Missing Authorization header (Bearer <api-key|grudge_jwt>)' };
   }
 
-  // Hash the key and look up in D1
+  // 1) Fleet Grudge ID JWT (same secret as Railway / id gateway) — member chat
+  if (env.JWT_SECRET && apiKey.split('.').length === 3) {
+    const payload = await verifyHs256Jwt(apiKey, env.JWT_SECRET);
+    if (payload) {
+      const grudgeId = String(payload.grudge_id || payload.sub || payload.userId || 'jwt-user');
+      const tier = String(payload.tier || payload.role || 'member');
+      const scope = tier === 'admin' || tier === 'master_admin' ? 'admin' : 'member';
+      return {
+        keyId: `jwt:${grudgeId}`,
+        name: grudgeId,
+        scope,
+        tier,
+        rpmLimit: scope === 'admin' ? 300 : 120,
+        authType: 'grudge_jwt',
+      };
+    }
+  }
+
+  // 2) Hash the key and look up in D1 api_keys
   const keyHash = await sha256(apiKey);
 
   try {
@@ -200,7 +239,7 @@ async function authenticate(request, env) {
     ).bind(keyHash).first();
 
     if (!row) {
-      return { error: 'Invalid API key' };
+      return { error: 'Invalid API key or JWT' };
     }
     if (!row.enabled) {
       return { error: 'API key disabled' };
@@ -210,15 +249,47 @@ async function authenticate(request, env) {
     env.DB.prepare('UPDATE api_keys SET last_used = datetime(\'now\') WHERE id = ?')
       .bind(row.id).run().catch(() => {});
 
-    return { keyId: row.id, name: row.name, scope: row.scope, tier: row.tier, rpmLimit: row.rpm_limit };
+    return { keyId: row.id, name: row.name, scope: row.scope, tier: row.tier, rpmLimit: row.rpm_limit, authType: 'api_key' };
   } catch (err) {
     // D1 unavailable — allow with default limits if key matches env fallback
     console.warn('D1 auth lookup failed, checking env fallback:', err.message);
     const fallbackKey = env.VPS_INTERNAL_KEY;
     if (fallbackKey && apiKey === fallbackKey) {
-      return { keyId: 'env-fallback', name: 'internal', scope: 'admin', tier: 'internal', rpmLimit: 300 };
+      return { keyId: 'env-fallback', name: 'internal', scope: 'admin', tier: 'internal', rpmLimit: 300, authType: 'env' };
     }
     return { error: 'Authentication service unavailable' };
+  }
+}
+
+/** Workers-compatible HS256 JWT verify (Grudge ID tokens). */
+async function verifyHs256Jwt(token, secret) {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw',
+      enc.encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify'],
+    );
+    const sigInput = enc.encode(`${parts[0]}.${parts[1]}`);
+    const sigB64 = parts[2].replace(/-/g, '+').replace(/_/g, '/');
+    const pad = '='.repeat((4 - (sigB64.length % 4)) % 4);
+    const sigBin = atob(sigB64 + pad);
+    const sig = new Uint8Array(sigBin.length);
+    for (let i = 0; i < sigBin.length; i++) sig[i] = sigBin.charCodeAt(i);
+    const ok = await crypto.subtle.verify('HMAC', key, sig, sigInput);
+    if (!ok) return null;
+    const payloadJson = new TextDecoder().decode(
+      Uint8Array.from(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (parts[1].length % 4)) % 4)), (c) => c.charCodeAt(0)),
+    );
+    const payload = JSON.parse(payloadJson);
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
+    return payload;
+  } catch {
+    return null;
   }
 }
 
@@ -261,15 +332,82 @@ async function handleHealth(env) {
 
   return json({
     status: 'ok',
+    ok: true,
     service: 'grudge-ai-hub',
-    version: '1.1.0',
-    environment: env.ENVIRONMENT,
+    version: '1.2.0',
+    environment: env.ENVIRONMENT || 'production',
     providers: {
       gemini_byok: isGeminiByokConfigured(env) ? 'configured' : 'missing',
       workers_ai: 'available',
       vps_ai_agent: vpsStatus,
+      grudge_jwt: env.JWT_SECRET ? 'configured' : 'optional',
     },
+    fleet: {
+      identity: 'https://id.grudge-studio.com',
+      gameData: 'https://grudge-api-production-0d46.up.railway.app',
+      objectStore: 'https://objectstore.grudge-studio.com/api/v1',
+      assets: 'https://assets.grudge-studio.com',
+      docs: 'https://info.grudge-studio.com',
+      canonical: 'https://objectstore.grudge-studio.com/api/v1/fleet-canonical.json',
+    },
+    public_routes: ['/health', '/api/health', '/v1/agents', '/v1/models', '/v1/ssot'],
     timestamp: new Date().toISOString(),
+  });
+}
+
+function handleSsotPointers() {
+  return json({
+    ok: true,
+    codex: 'https://info.grudge-studio.com/docs/CANONICAL_CODEX.md',
+    fleet_canonical: 'https://objectstore.grudge-studio.com/api/v1/fleet-canonical.json',
+    warlords_production: 'https://objectstore.grudge-studio.com/api/v1/warlords-production.json',
+    docs_catalog: 'https://objectstore.grudge-studio.com/api/v1/docs-catalog.json',
+    auth: 'https://id.grudge-studio.com',
+    game_api: 'https://grudge-api-production-0d46.up.railway.app',
+  });
+}
+
+/** GET /v1/models — public model + agent catalog for fleet clients */
+async function handlePublicModels(env) {
+  const agentsRes = await handleListAgents(env);
+  let agents = [];
+  try {
+    const body = await agentsRes.json();
+    agents = body.agents || [];
+  } catch { /* ignore */ }
+
+  const models = [
+    {
+      id: env.DEFAULT_AI_MODEL || DEFAULT_GEMINI_MODEL || 'google/gemini-3.5-flash',
+      provider: 'gemini',
+      capability: 'chat',
+      default: true,
+    },
+    {
+      id: env.FALLBACK_AI_MODEL || DEFAULT_CF_MODEL || '@cf/meta/llama-3.1-8b-instruct-fast',
+      provider: 'workers_ai',
+      capability: 'chat',
+      default: false,
+    },
+  ];
+
+  return json({
+    ok: true,
+    service: 'grudge-ai-hub',
+    version: '1.2.0',
+    models,
+    agents,
+    auth: {
+      chat: 'Bearer API key (D1 api_keys) or Grudge ID JWT when JWT_SECRET is set',
+      public: ['/v1/models', '/v1/agents', '/health', '/v1/ssot'],
+    },
+    endpoints: {
+      chat: 'POST /v1/chat',
+      agent_chat: 'POST /v1/agents/:role/chat',
+      vision: 'POST /v1/vision',
+      image: 'POST /v1/image/generate',
+      embed: 'POST /v1/embed',
+    },
   });
 }
 
@@ -294,7 +432,7 @@ async function handleListAgents(env) {
     });
   } catch (err) {
     // D1 unavailable — return static fallback
-    const roles = ['general', 'dev', 'balance', 'lore', 'art', 'mission', 'companion', 'faction'];
+    const roles = ['general', 'dev', 'balance', 'lore', 'art', 'mission', 'companion', 'faction', 'realms'];
     return json({
       agents: roles.map(r => ({ role: r, endpoint: `/v1/agents/${r}/chat` })),
       count: roles.length,
@@ -337,12 +475,21 @@ async function handleChat(request, env, auth, requestId, role) {
 
   if (!roleConfig) {
     // Inline fallback for known roles
+    const realmsPrompt =
+      role === 'realms'
+        ? `You are the Grudge Studio Realms deployment operator for Mine-Loader + Open (open.grudge-studio.com).
+Fleet: SPA mine-loader.vercel.app · edge mine.grudge-studio.com · API mine-loader-api-production.up.railway.app (1 replica + Postgres).
+Open open.grudge-studio.com rewrites blocks/worlds/definitions to Mine-Loader; characters to grudge-api Railway.
+Assets assets.grudge-studio.com · D1 grudge-assets-db · seed-deployments v4 + voxel map chunks (1 block=1m).
+Checklist: healthz, /api/blocks, Railway single replica, Vercel prod aliases, CORS for open + gameopen, no Replit, Mine-Loader is sole world authority.
+Be concise and command-oriented.`
+        : `You are the GRUDA Legion AI assistant for Grudge Studio. Role: ${role}.`;
     roleConfig = {
       role,
-      system_prompt: `You are the GRUDA Legion AI assistant for Grudge Studio. Role: ${role}.`,
+      system_prompt: realmsPrompt,
       model: DEFAULT_GEMINI_MODEL,
-      temperature: 0.7,
-      max_tokens: 1024,
+      temperature: role === 'realms' ? 0.35 : 0.7,
+      max_tokens: role === 'realms' ? 2048 : 1024,
       escalate_to_vps: 0,
     };
   }
@@ -902,7 +1049,7 @@ async function logRequest(env, { requestId, apiKeyId, role, provider, model, sta
 // ════════════════════════════════════════════════════════════════
 
 async function proxyToUi(request, env, origin) {
-  const uiOrigin = (env.UI_ORIGIN || 'https://grudaagent.vercel.app').replace(/\/$/, '');
+  const uiOrigin = (env.UI_ORIGIN || 'https://grudge-agent.vercel.app').replace(/\/$/, '');
   const src = new URL(request.url);
   const target = new URL(src.pathname + src.search, uiOrigin + '/');
 
@@ -964,13 +1111,17 @@ const ALLOWED_ORIGINS = [
 function corsResponse(response, origin) {
   const headers = new Headers(response.headers);
 
-  // Allow any *.vercel.app or *.grudge-studio.com or explicit origins
-  const allowed = ALLOWED_ORIGINS.includes(origin)
+  // Allow any *.vercel.app or *.grudge-studio.com or explicit origins.
+  // No Origin (direct browser navigation / same-origin) → reflect ai hub origin.
+  const allowed = !origin
+    || ALLOWED_ORIGINS.includes(origin)
     || origin.endsWith('.vercel.app')
     || origin.endsWith('.grudge-studio.com')
-    || origin.endsWith('.grudgestudio.com');
+    || origin.endsWith('.grudgestudio.com')
+    || origin.endsWith('.puter.site')
+    || origin.endsWith('.puter.work');
 
-  headers.set('Access-Control-Allow-Origin', allowed ? origin : ALLOWED_ORIGINS[0]);
+  headers.set('Access-Control-Allow-Origin', allowed ? (origin || '*') : ALLOWED_ORIGINS[0]);
   headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-Id');
   headers.set('Access-Control-Max-Age', '86400');

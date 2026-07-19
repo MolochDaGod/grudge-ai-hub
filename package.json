@@ -1,11 +1,14 @@
 {
   "name": "grudge-legion-ai",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "GRUDA Legion AI Hub — Cloudflare Worker gateway for Grudge Studio",
   "scripts": {
-    "deploy": "wrangler deploy",
-    "tail": "wrangler tail grudge-legion-ai"
+    "deploy": "wrangler deploy && wrangler deploy --config wrangler.domain.toml",
+    "deploy:api": "wrangler deploy",
+    "deploy:domain": "wrangler deploy --config wrangler.domain.toml",
+    "tail": "wrangler tail grudge-legion-ai",
+    "tail:domain": "wrangler tail grudge-ai-hub"
   },
   "devDependencies": {
     "wrangler": "^4.87.0"
