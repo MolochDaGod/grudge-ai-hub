@@ -1,6 +1,17 @@
 # GRUDA Legion AI Hub
 
-Centralized AI gateway for all Grudge Studio apps at `ai.grudge-studio.com`.
+Centralized AI gateway for all Grudge Studio apps.
+
+**Canonical public URL (ONE TRUTH):** `https://ai.grudge-studio.com`
+
+| Path | Role |
+|------|------|
+| `GET /` | GRUDA Agent UI (proxied from `UI_ORIGIN`) |
+| `GET /health` · `/api/health` | Health JSON (public) |
+| `GET /v1/agents` | Agent catalog (public) |
+| `POST /v1/*` | Chat / vision / image / embed (auth) |
+
+Alias host `legion-ai.grudge-studio.com` points at the same hub — prefer **ai.grudge-studio.com** in all clients.
 
 ## Architecture
 
@@ -22,8 +33,10 @@ Grudge Apps (GDevelop, WCS, Engine, etc.)
 |--------|------|------|-------------|
 | GET | `/health` | Public | Health + upstream VPS status |
 | GET | `/v1/agents` | Public | List all agent roles |
-| POST | `/v1/chat` | API key | General chat |
-| POST | `/v1/agents/:role/chat` | API key | Role-specialized chat |
+| POST | `/v1/chat` | API key or Grudge JWT | General chat |
+| POST | `/v1/agents/:role/chat` | API key or Grudge JWT | Role-specialized chat |
+| POST | `/v1/ui/chat` | API key or Grudge JWT | **UI/UX Director** alias (`role=ui`) |
+| POST | `/v1/ux/chat` | API key or Grudge JWT | **UX Flow** alias (`role=ux`) |
 | POST | `/v1/image/generate` | API key | Stable Diffusion XL image gen |
 | POST | `/v1/embed` | API key | BGE text embeddings |
 | GET | `/v1/admin/usage` | Admin | Usage analytics |
@@ -43,6 +56,8 @@ Grudge Apps (GDevelop, WCS, Engine, etc.)
 | mission | Llama 3.1 8B | No |
 | companion | Llama 3.1 8B | No |
 | faction | Llama 3.1 8B → Anthropic | Yes |
+| **ui** | Gemini 3.5 Flash | No — game UI kits, radials, HUDs (ui.grudge-studio.com) |
+| **ux** | Gemini 3.5 Flash | No — auth/editor flow UX |
 
 ## First-Time Deploy
 
@@ -97,7 +112,18 @@ In Cloudflare dashboard for `grudge-studio.com`:
 ai   AAAA   100::   (Proxied ☁️)
 ```
 
-The Worker route `ai.grudge-studio.com/*` in `wrangler.toml` handles the rest.
+### Production workers (ONE TRUTH)
+
+| Worker | Config | Owns |
+|--------|--------|------|
+| **grudge-ai-hub** | `wrangler.domain.toml` | Custom domain `ai.grudge-studio.com` — public **GRUDA Agent UI** (proxies `UI_ORIGIN`, default `https://grudaagent.vercel.app`) for non-API paths |
+| **grudge-legion-ai** | `wrangler.toml` | Path routes `/v1/*`, `/health`, `/api/health` — Gemini BYOK + Workers AI API |
+
+```bash
+npm run deploy          # both workers
+npm run deploy:domain   # UI / custom domain only
+npm run deploy:api      # legion API routes only
+```
 
 ### 7. Create your first API key
 

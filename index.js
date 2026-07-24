@@ -128,6 +128,16 @@ export default {
         return finish(obs, request, corsResponse(await handleChat(request, env, auth, requestId, roleMatch[1]), origin), t0);
       }
 
+      // Convenience aliases for ui.grudge-studio.com + fleet UI clients
+      // POST /v1/ui/chat  → ui agent
+      // POST /v1/ux/chat  → ux agent
+      if (url.pathname === '/v1/ui/chat' && method === 'POST') {
+        return finish(obs, request, corsResponse(await handleChat(request, env, auth, requestId, 'ui'), origin), t0);
+      }
+      if (url.pathname === '/v1/ux/chat' && method === 'POST') {
+        return finish(obs, request, corsResponse(await handleChat(request, env, auth, requestId, 'ux'), origin), t0);
+      }
+
       // POST /v1/vision — Gemini multimodal (logo analysis, screenshots, etc.)
       if (url.pathname === '/v1/vision' && method === 'POST') {
         return finish(obs, request, corsResponse(await handleVision(request, env, auth, requestId), origin), t0);
@@ -413,13 +423,43 @@ async function handlePublicModels(env) {
 
 /** GET /v1/agents */
 async function handleListAgents(env) {
+  const ensureUiUx = (agents) => {
+    const have = new Set(agents.map((a) => a.role));
+    if (!have.has('ui')) {
+      agents.push({
+        role: 'ui',
+        name: 'UI / UX Director',
+        description: 'Game UI kits, HUDs, radials, hotkeys for ui.grudge-studio.com',
+        model: DEFAULT_GEMINI_MODEL,
+        escalates_to_vps: false,
+        enabled: true,
+        endpoint: '/v1/agents/ui/chat',
+        alias: '/v1/ui/chat',
+      });
+    }
+    if (!have.has('ux')) {
+      agents.push({
+        role: 'ux',
+        name: 'UX Flow Expert',
+        description: 'Auth handoffs, editor flows, fleet SSO UX',
+        model: DEFAULT_GEMINI_MODEL,
+        escalates_to_vps: false,
+        enabled: true,
+        endpoint: '/v1/agents/ux/chat',
+        alias: '/v1/ux/chat',
+      });
+    }
+    agents.sort((a, b) => String(a.role).localeCompare(String(b.role)));
+    return agents;
+  };
+
   try {
     const { results } = await env.DB.prepare(
       'SELECT role, display_name, description, model, escalate_to_vps, enabled FROM agent_roles ORDER BY role'
     ).all();
 
-    return json({
-      agents: results.map(r => ({
+    const agents = ensureUiUx(
+      results.map((r) => ({
         role: r.role,
         name: r.display_name,
         description: r.description,
@@ -428,13 +468,20 @@ async function handleListAgents(env) {
         enabled: !!r.enabled,
         endpoint: `/v1/agents/${r.role}/chat`,
       })),
-      count: results.length,
+    );
+
+    return json({
+      agents,
+      count: agents.length,
     });
   } catch (err) {
     // D1 unavailable — return static fallback
-    const roles = ['general', 'dev', 'balance', 'lore', 'art', 'mission', 'companion', 'faction', 'realms'];
+    const roles = [
+      'general', 'dev', 'balance', 'lore', 'art', 'mission',
+      'companion', 'faction', 'realms', 'ui', 'ux', 'api', '3d',
+    ];
     return json({
-      agents: roles.map(r => ({ role: r, endpoint: `/v1/agents/${r}/chat` })),
+      agents: ensureUiUx(roles.map((r) => ({ role: r, endpoint: `/v1/agents/${r}/chat`, enabled: true }))),
       count: roles.length,
       note: 'Static fallback — D1 unavailable',
     });
@@ -474,24 +521,8 @@ async function handleChat(request, env, auth, requestId, role) {
   }
 
   if (!roleConfig) {
-    // Inline fallback for known roles
-    const realmsPrompt =
-      role === 'realms'
-        ? `You are the Grudge Studio Realms deployment operator for Mine-Loader + Open (open.grudge-studio.com).
-Fleet: SPA mine-loader.vercel.app · edge mine.grudge-studio.com · API mine-loader-api-production.up.railway.app (1 replica + Postgres).
-Open open.grudge-studio.com rewrites blocks/worlds/definitions to Mine-Loader; characters to grudge-api Railway.
-Assets assets.grudge-studio.com · D1 grudge-assets-db · seed-deployments v4 + voxel map chunks (1 block=1m).
-Checklist: healthz, /api/blocks, Railway single replica, Vercel prod aliases, CORS for open + gameopen, no Replit, Mine-Loader is sole world authority.
-Be concise and command-oriented.`
-        : `You are the GRUDA Legion AI assistant for Grudge Studio. Role: ${role}.`;
-    roleConfig = {
-      role,
-      system_prompt: realmsPrompt,
-      model: DEFAULT_GEMINI_MODEL,
-      temperature: role === 'realms' ? 0.35 : 0.7,
-      max_tokens: role === 'realms' ? 2048 : 1024,
-      escalate_to_vps: 0,
-    };
+    // Inline fallback for known roles (D1 seed lag / cold deploy)
+    roleConfig = inlineRoleFallback(role);
   }
 
   const useModel = model || roleConfig.model;
@@ -1095,6 +1126,14 @@ const ALLOWED_ORIGINS = [
   'https://grudge-studio.com',
   'https://grudgestudio.com',
   'https://dash.grudge-studio.com',
+  'https://ui.grudge-studio.com',
+  'https://ai.grudge-studio.com',
+  'https://id.grudge-studio.com',
+  'https://open.grudge-studio.com',
+  'https://character.grudge-studio.com',
+  'https://forge.grudge-studio.com',
+  'https://threejs-player-and-grass.vercel.app',
+  'https://grudge-ui-editor.vercel.app',
   'https://gdevelop-assistant.vercel.app',
   'https://warlord-crafting-suite.vercel.app',
   'https://grudge-engine-web.vercel.app',
@@ -1103,10 +1142,62 @@ const ALLOWED_ORIGINS = [
   'https://grudge-angeler.vercel.app',
   'https://grudge-rts.vercel.app',
   'https://grudgecontrol.vercel.app',
-
   'https://app.puter.com',
   'https://molochdagod.github.io',
 ];
+
+/** D1-offline role defaults (must stay in sync with migrations/003_ui_ux_agent.sql). */
+function inlineRoleFallback(role) {
+  const UI_PROMPT = `You are the Grudge Studio UI/UX Director for game interfaces (ui.grudge-studio.com HYDRA + fleet HUDs).
+Tokens: gold #c9950a, obsidian panels, Cinzel + JetBrains Mono. Themes: fantasy|cyberpunk|fps|rpg.
+When generating UI, JSON only: type uikit_patch | radial | hotkeys | panel. Prefer existing EquipmentManager, Puter KV grudge:{id}:ui-*, fleet auth. No parallel systems.`;
+  const UX_PROMPT = `You are the Grudge Studio UX Flow Expert. Auth: id.grudge-studio.com popup + grudge_token → session JWT → Puter link. Preserve editor state. Output short checklists and empty/error/loading states.`;
+  const REALMS_PROMPT = `You are the Grudge Studio Realms deployment operator for Mine-Loader + Open (open.grudge-studio.com).
+Fleet: SPA mine-loader.vercel.app · edge mine.grudge-studio.com · API mine-loader-api-production.up.railway.app (1 replica + Postgres).
+Open open.grudge-studio.com rewrites blocks/worlds/definitions to Mine-Loader; characters to grudge-api Railway.
+Assets assets.grudge-studio.com · D1 grudge-assets-db · seed-deployments v4 + voxel map chunks (1 block=1m).
+Checklist: healthz, /api/blocks, Railway single replica, Vercel prod aliases, CORS for open + gameopen, no Replit, Mine-Loader is sole world authority.
+Be concise and command-oriented.`;
+
+  if (role === 'ui') {
+    return {
+      role: 'ui',
+      system_prompt: UI_PROMPT,
+      model: DEFAULT_GEMINI_MODEL,
+      temperature: 0.45,
+      max_tokens: 2048,
+      escalate_to_vps: 0,
+    };
+  }
+  if (role === 'ux') {
+    return {
+      role: 'ux',
+      system_prompt: UX_PROMPT,
+      model: DEFAULT_GEMINI_MODEL,
+      temperature: 0.4,
+      max_tokens: 1536,
+      escalate_to_vps: 0,
+    };
+  }
+  if (role === 'realms') {
+    return {
+      role: 'realms',
+      system_prompt: REALMS_PROMPT,
+      model: DEFAULT_GEMINI_MODEL,
+      temperature: 0.35,
+      max_tokens: 2048,
+      escalate_to_vps: 0,
+    };
+  }
+  return {
+    role,
+    system_prompt: `You are the GRUDA Legion AI assistant for Grudge Studio. Role: ${role}.`,
+    model: DEFAULT_GEMINI_MODEL,
+    temperature: 0.7,
+    max_tokens: 1024,
+    escalate_to_vps: 0,
+  };
+}
 
 function corsResponse(response, origin) {
   const headers = new Headers(response.headers);
