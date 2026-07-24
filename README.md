@@ -90,6 +90,10 @@ npx wrangler secret put GEMINI_API_KEY
 # Or sync from canonical Grudge .env:
 #   pwsh scripts/set-gemini-secret.ps1
 
+# Fleet Grudge ID JWT — REQUIRED on BOTH workers (path routes use grudge-legion-ai)
+#   pwsh scripts/set-jwt-secret.ps1
+# Without JWT_SECRET on grudge-legion-ai, /v1/* rejects member JWTs (API keys only).
+
 # VPS internal key (matches INTERNAL_API_KEY on VPS docker-compose)
 npx wrangler secret put VPS_INTERNAL_KEY
 ```
