@@ -78,6 +78,13 @@ export default {
       if (url.pathname === '/v1/ssot' && method === 'GET') {
         return finish(obs, request, corsResponse(handleSsotPointers(), origin), t0);
       }
+      // Rapier fleet physics agent context (public — no auth)
+      if (url.pathname === '/v1/rapier/checklist' && method === 'GET') {
+        return finish(obs, request, corsResponse(handleRapierChecklist(), origin), t0);
+      }
+      if (url.pathname === '/v1/rapier/system' && method === 'GET') {
+        return finish(obs, request, corsResponse(handleRapierSystem(), origin), t0);
+      }
 
       // UI + gruda-agent API — proxy to Vercel (handles ?grudge_token= SSO landing)
       if (!url.pathname.startsWith('/v1/')) {
@@ -374,6 +381,62 @@ function handleSsotPointers() {
     docs_catalog: 'https://objectstore.grudge-studio.com/api/v1/docs-catalog.json',
     auth: 'https://id.grudge-studio.com',
     game_api: 'https://grudge-api-production-0d46.up.railway.app',
+    rapier_api: 'https://rapier.rs/docs/api/javascript/JavaScript3D',
+    rapier_checklist: '/v1/rapier/checklist',
+  });
+}
+
+const RAPIER_SYSTEM = `You are the Grudge Studio Rapier physics deploy agent.
+Official Rapier JS 3D API: https://rapier.rs/docs/api/javascript/JavaScript3D
+Fleet skill: grudge-rapier. Surfaces: grudgewarlords.com Island3D PhysicsWorld, Mine-Loader WorldPhysics.
+
+HARD RULES:
+1. SI meters only — human ~1.8m (capsule r=0.32, halfH=0.55). Never pixel physics.
+2. Fixed timestep 1/60 — never variable frame dt alone.
+3. Dynamic bodies need density>0 (zero mass = infinite mass).
+4. CCT = kinematic position-based; gravity in desired movement; setNextKinematicTranslation.
+5. Trimesh colliders on FIXED bodies only — not dynamic.
+6. Same create order + same @dimforge/rapier3d-compat version for determinism/snapshots.
+7. Package: "@dimforge/rapier3d-compat": "^0.19.3"
+
+Code SSOT:
+- GrudgeBuilder: client/src/island3d/physics/PhysicsWorld.ts + fleet/*
+- Mine-Loader: artifacts/voxelcraft/src/lib/physics/*
+- Docs: GrudgeBuilder/docs/RAPIER_FLEET.md
+
+Deploy grudgewarlords.com: Vercel alias from GrudgeBuilder main (vercel.json).
+Do not invent Cannon-ES APIs on Rapier projects. Prefer fleet presets over ad-hoc ColliderDesc.`;
+
+function handleRapierChecklist() {
+  return json({
+    ok: true,
+    service: 'grudge-ai-hub',
+    topic: 'rapier-fleet',
+    apiDocs: 'https://rapier.rs/docs/api/javascript/JavaScript3D',
+    package: { name: '@dimforge/rapier3d-compat', version: '^0.19.3' },
+    domains: ['grudgewarlords.com', 'client.grudge-studio.com'],
+    code: {
+      island3d: 'client/src/island3d/physics/PhysicsWorld.ts',
+      fleet: 'client/src/island3d/physics/fleet/',
+      skill: 'grudge-rapier',
+    },
+    checklist: [
+      'dep @dimforge/rapier3d-compat@^0.19.3',
+      'fixed step 1/60',
+      'SI meters + human 1.8m CCT',
+      'density>0 on dynamics',
+      'trimesh fixed-only',
+      'physics debug gated (?physicsDebug=1)',
+      'Vercel main → grudgewarlords.com',
+    ],
+  });
+}
+
+function handleRapierSystem() {
+  return json({
+    ok: true,
+    role: 'rapier-deploy',
+    system: RAPIER_SYSTEM,
   });
 }
 
