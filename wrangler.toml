@@ -1,50 +1,58 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# API path worker — same code as grudge-ai-hub (domain owner)
+# ═══════════════════════════════════════════════════════════════════════════
+# Prefer canonical https://ai.grudge-studio.com for all clients.
+# This worker keeps /v1/* + /health path routes as high-priority API edge
+# (Gemini BYOK secrets historically lived here first).
+#
+# Deploy both: npm run deploy
+# Domain only:  npm run deploy:domain
+# API only:     npm run deploy:api
+
 name               = "grudge-legion-ai"
 main               = "index.js"
-compatibility_date = "2025-03-01"
+# Workers best-practices: keep date current; nodejs_compat for Buffer/crypto interop
+compatibility_date = "2026-03-01"
+compatibility_flags = ["nodejs_compat"]
 account_id         = "ee475864561b02d4588180b8b9acf694"
 workers_dev        = true
 
-# ── Workers AI binding ────────────────────────────────────────────────────────
+# CF Workers observability (logs/traces sampling)
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 [ai]
 binding = "AI"
 
-# ── D1 database for usage logs, agent config, API keys ────────────────────────
-# Create before first deploy:
-#   npx wrangler d1 create grudge-ai-hub
-# Copy the returned database_id below.
 [[d1_databases]]
 binding       = "DB"
 database_name = "grudge-ai-hub"
 database_id   = "42ada55e-2095-46da-840b-6bb301a57253"
 
-# ── KV namespace for rate limiting and operational flags ──────────────────────
-# Create before first deploy:
-#   npx wrangler kv namespace create "AI_HUB_KV"
-# Copy the returned id below.
 [[kv_namespaces]]
 binding = "KV"
 id      = "486553dfacdc40b394e630b1cdfa97d6"
 
-# ── Secrets (wrangler secret put …) ───────────────────────────────────────────
-# OBSERVATORY_KEY — Fleet observatory ingest (from grudge-fleet secrets/fleet-admin-key.txt)
-# GEMINI_API_KEY  — Google AI Studio key for Gemini BYOK (bypasses CF gateway balance)
-# GOOGLE_API_KEY  — alias for GEMINI_API_KEY
-# WORKERS_AI_USER_TOKEN — optional cfut_* token for Workers AI REST fallback
+# Secrets (wrangler secret put …) — also run scripts/set-gemini-secret.ps1
+# OBSERVATORY_KEY, GEMINI_API_KEY, VPS_INTERNAL_KEY, WORKERS_AI_USER_TOKEN
+# Never put secrets in [vars] or git.
 
-# ── Environment variables ─────────────────────────────────────────────────────
 [vars]
 ENVIRONMENT              = "production"
 DEFAULT_AI_MODEL         = "google/gemini-3.5-flash"
 FALLBACK_AI_MODEL        = "@cf/meta/llama-3.1-8b-instruct-fast"
 CLOUDFLARE_ACCOUNT_ID    = "ee475864561b02d4588180b8b9acf694"
-# VPS ai-agent fallback — disabled; fleet uses Gemini BYOK + Workers AI only
 VPS_ENABLED              = "false"
 VPS_AI_AGENT_URL         = ""
 RATE_LIMIT_RPM           = "60"
 RATE_LIMIT_RPM_ADMIN     = "300"
 MAX_PAYLOAD_BYTES        = "1048576"
+UI_ORIGIN                = "https://grudge-agent.vercel.app"
+# Fleet telemetry — prefer env override; DNS obs.grudge-studio.com may be pending
+OBSERVATORY_URL          = "https://grudge-fleet-harbor.grudge.workers.dev/api/observatory"
 
-# ── Routes: API paths (UI is on grudge-ai-hub custom domain worker in ObjectStore) ──
+# Specific path routes on canonical host (win over catch-all custom domain)
 [[routes]]
 pattern = "ai.grudge-studio.com/v1/*"
 zone_id = "e8c0c2ee3063f24eb31affddabf9730a"
@@ -54,7 +62,7 @@ pattern = "ai.grudge-studio.com/health"
 zone_id = "e8c0c2ee3063f24eb31affddabf9730a"
 
 [[routes]]
-pattern = "legion-ai.grudge-studio.com/*"
+pattern = "ai.grudge-studio.com/api/health"
 zone_id = "e8c0c2ee3063f24eb31affddabf9730a"
 
 # ── Staging ───────────────────────────────────────────────────────────────────

@@ -1,0 +1,67 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# CANONICAL AI Hub — ai.grudge-studio.com (ONE TRUTH)
+# ═══════════════════════════════════════════════════════════════════════════
+# Worker name: grudge-ai-hub
+# Owns: custom domain (UI proxy + API when no more-specific route)
+# Code: same index.js as grudge-legion-ai
+#
+# Public surface (only URL clients should use):
+#   https://ai.grudge-studio.com/          → GRUDA Agent UI
+#   https://ai.grudge-studio.com/health    → health JSON
+#   https://ai.grudge-studio.com/v1/*      → agents / chat / vision (auth)
+#
+# Deploy: npx wrangler deploy --config wrangler.domain.toml
+# Secrets:  scripts/set-gemini-secret.ps1  (GEMINI_API_KEY on both workers)
+
+name               = "grudge-ai-hub"
+main               = "index.js"
+compatibility_date = "2026-03-01"
+compatibility_flags = ["nodejs_compat"]
+account_id         = "ee475864561b02d4588180b8b9acf694"
+workers_dev        = true
+
+[ai]
+binding = "AI"
+
+[[d1_databases]]
+binding       = "DB"
+database_name = "grudge-ai-hub"
+database_id   = "42ada55e-2095-46da-840b-6bb301a57253"
+
+[[kv_namespaces]]
+binding = "KV"
+id      = "486553dfacdc40b394e630b1cdfa97d6"
+
+[vars]
+ENVIRONMENT              = "production"
+DEFAULT_AI_MODEL         = "google/gemini-3.5-flash"
+FALLBACK_AI_MODEL        = "@cf/meta/llama-3.1-8b-instruct-fast"
+CLOUDFLARE_ACCOUNT_ID    = "ee475864561b02d4588180b8b9acf694"
+VPS_ENABLED              = "false"
+VPS_AI_AGENT_URL         = ""
+RATE_LIMIT_RPM           = "60"
+RATE_LIMIT_RPM_ADMIN     = "300"
+MAX_PAYLOAD_BYTES        = "1048576"
+# UI origin (proxied for GET / and non-/v1 paths) — not a public fleet domain
+UI_ORIGIN                = "https://grudge-agent.vercel.app"
+OBSERVATORY_URL          = "https://grudge-fleet-harbor.grudge.workers.dev/api/observatory"
+
+# Async AI events (consumer in index.js — keep for convert/job handoff growth)
+[[queues.consumers]]
+queue = "grudge-ai-events"
+max_batch_size = 10
+max_retries = 3
+
+# Primary hostname — public UI + SSO landing (?grudge_token=)
+[[routes]]
+pattern = "ai.grudge-studio.com"
+custom_domain = true
+
+# Alias hostname (same worker) — legionAgent in older docs; prefer ai.grudge-studio.com
+[[routes]]
+pattern = "legion-ai.grudge-studio.com"
+custom_domain = true
+
+[observability]
+enabled = true
+head_sampling_rate = 1

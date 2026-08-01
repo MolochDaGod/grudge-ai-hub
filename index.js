@@ -29,14 +29,18 @@ import {
 } from './lib/aiRunner.js';
 import { Observatory } from './lib/observatory-client.js';
 
-const OBS_ENDPOINT = 'https://grudge-fleet-harbor.grudge.workers.dev/api/observatory';
+const DEFAULT_OBS_ENDPOINT =
+  'https://grudge-fleet-harbor.grudge.workers.dev/api/observatory';
 
 function fleetObs(env, ctx) {
   if (!env.OBSERVATORY_KEY) return null;
+  // Prefer var/secret OBSERVATORY_URL; fall back to fleet harbor (obs.* DNS may be pending)
+  const endpoint = (env.OBSERVATORY_URL || DEFAULT_OBS_ENDPOINT).replace(/\/$/, '');
   return new Observatory({
-    endpoint: OBS_ENDPOINT,
+    endpoint,
     source: 'grudge-ai-hub',
     key: env.OBSERVATORY_KEY,
+    // Post-response telemetry — never block the AI response on log ingest
     waitUntil: ctx.waitUntil.bind(ctx),
   });
 }
