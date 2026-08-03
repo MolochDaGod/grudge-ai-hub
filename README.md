@@ -2,13 +2,15 @@
 
 Centralized AI gateway for all Grudge Studio apps.
 
-**Canonical public URL (ONE TRUTH):** `https://ai.grudge-studio.com`
+**Canonical public URL (ONE TRUTH):** `https://ai.grudge-studio.com`  
+**Version:** 1.3.0 (status-bar health + Grok/Grudge wiring)
 
 | Path | Role |
 |------|------|
 | `GET /` | GRUDA Agent UI (proxied from `UI_ORIGIN`) |
-| `GET /health` · `/api/health` | Health JSON (public) |
+| `GET /health` · `/api/health` | Health JSON (public) — includes `grok` / `grudgeAi` for UI dots |
 | `GET /v1/agents` | Agent catalog (public) |
+| `GET /v1/models` · `/v1/ssot` | Model catalog + SSOT pointers (public) |
 | `POST /v1/*` | Chat / vision / image / embed (auth) |
 
 Alias host `legion-ai.grudge-studio.com` points at the same hub — prefer **ai.grudge-studio.com** in all clients.
@@ -16,15 +18,32 @@ Alias host `legion-ai.grudge-studio.com` points at the same hub — prefer **ai.
 ## Architecture
 
 ```
-Grudge Apps (GDevelop, WCS, Engine, etc.)
+Browser / fleet apps
     │
-    └── ai.grudge-studio.com (Cloudflare Worker)
-            │
-            ├── Workers AI (primary — Llama 3.1, SDXL, BGE embeddings)
-            ├── D1 (role config, usage logs, API keys)
-            ├── KV (rate limiting, maintenance flags)
-            └── VPS ai-agent fallback (Anthropic → OpenAI → DeepSeek)
-                via api.grudge-studio.com/ai/*
+    └── ai.grudge-studio.com
+            ├── grudge-ai-hub (domain)     → UI proxy → UI_ORIGIN
+            ├── grudge-legion-ai (paths)   → /v1/*, /health, /api/health
+            │       ├── Gemini BYOK + Workers AI
+            │       ├── D1 + KV
+            │       └── Grudge JWT / API keys
+            └── UI_ORIGIN = https://grudaagent.vercel.app
+                    (XAI_API_KEY + GRUDGE_AI_KEY — NOT grudge-agent.vercel.app)
+```
+
+### Status bar (Grok / Grudge)
+
+| Dot | Green when |
+|-----|------------|
+| **Grok** | UI health reports `grok: true` (XAI key on **grudaagent**) |
+| **Grudge** | Hub up (`grudgeAi: true`) + chat path (server key or sign-in) |
+
+**Never** set `UI_ORIGIN` to `grudge-agent.vercel.app` — that project has no production secrets.
+
+### Deploy both workers (required)
+
+```bash
+npx wrangler deploy --config wrangler.domain.toml   # domain + UI proxy
+npx wrangler deploy --config wrangler.toml          # path routes /health /v1/*
 ```
 
 ## Endpoints
