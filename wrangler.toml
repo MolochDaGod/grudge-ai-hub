@@ -48,7 +48,8 @@ VPS_AI_AGENT_URL         = ""
 RATE_LIMIT_RPM           = "60"
 RATE_LIMIT_RPM_ADMIN     = "300"
 MAX_PAYLOAD_BYTES        = "1048576"
-UI_ORIGIN                = "https://grudge-agent.vercel.app"
+# Must match grudaagent (has XAI + GRUDGE_AI_KEY). grudge-agent.vercel.app has no secrets.
+UI_ORIGIN                = "https://grudaagent.vercel.app"
 # Fleet telemetry — prefer env override; DNS obs.grudge-studio.com may be pending
 OBSERVATORY_URL          = "https://grudge-fleet-harbor.grudge.workers.dev/api/observatory"
 

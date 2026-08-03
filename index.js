@@ -347,21 +347,40 @@ async function checkRateLimit(kv, key, maxRpm) {
 //  Handlers
 // ════════════════════════════════════════════════════════════════
 
-/** GET /health */
+/** GET /health · /api/health — fleet health + GRUDA Agent status-bar fields */
 async function handleHealth(env) {
   const vpsStatus = await getVpsHealthStatus(env);
+  const uiOrigin = (env.UI_ORIGIN || 'https://grudaagent.vercel.app').replace(/\/$/, '');
+
+  // Merge UI /api/health (Grok XAI + server hub key flags) when reachable
+  let ui = null;
+  try {
+    const r = await fetch(`${uiOrigin}/api/health`, {
+      signal: AbortSignal.timeout(4500),
+      headers: { Accept: 'application/json' },
+    });
+    if (r.ok) ui = await r.json();
+  } catch {
+    /* UI probe optional */
+  }
+
+  const geminiOk = isGeminiByokConfigured(env);
+  // This worker IS the Grudge AI hub — always true when health responds
+  const grudgeAi = true;
+  const grok = !!(ui?.grok || env.XAI_API_KEY);
 
   return json({
     status: 'ok',
     ok: true,
     service: 'grudge-ai-hub',
-    version: '1.2.0',
+    version: '1.3.0',
     environment: env.ENVIRONMENT || 'production',
     providers: {
-      gemini_byok: isGeminiByokConfigured(env) ? 'configured' : 'missing',
+      gemini_byok: geminiOk ? 'configured' : 'missing',
       workers_ai: 'available',
       vps_ai_agent: vpsStatus,
       grudge_jwt: env.JWT_SECRET ? 'configured' : 'optional',
+      xai_grok: grok ? 'configured' : (ui ? 'ui_missing' : 'unknown'),
     },
     fleet: {
       identity: 'https://id.grudge-studio.com',
@@ -369,8 +388,19 @@ async function handleHealth(env) {
       objectStore: 'https://objectstore.grudge-studio.com/api/v1',
       assets: 'https://assets.grudge-studio.com',
       docs: 'https://info.grudge-studio.com',
+      ui: uiOrigin,
       canonical: 'https://objectstore.grudge-studio.com/api/v1/fleet-canonical.json',
+      grok_build: 'https://ai.grudge-studio.com/v1/ssot',
     },
+    // ── Status-bar contract for GRUDA Agent UI (public/index.html checkHealth) ──
+    grok,
+    grudgeAi,
+    treaty: ui?.treaty !== false,
+    serverless: ui?.serverless !== false,
+    skills: ui?.skills ?? null,
+    ui_health: ui
+      ? { ok: !!ui.ok, grok: !!ui.grok, grudgeAi: !!ui.grudgeAi, skills: ui.skills }
+      : { ok: false, note: 'UI health probe failed — check UI_ORIGIN' },
     public_routes: ['/health', '/api/health', '/v1/agents', '/v1/models', '/v1/ssot'],
     timestamp: new Date().toISOString(),
   });
@@ -1147,7 +1177,7 @@ async function logRequest(env, { requestId, apiKeyId, role, provider, model, sta
 // ════════════════════════════════════════════════════════════════
 
 async function proxyToUi(request, env, origin) {
-  const uiOrigin = (env.UI_ORIGIN || 'https://grudge-agent.vercel.app').replace(/\/$/, '');
+  const uiOrigin = (env.UI_ORIGIN || 'https://grudaagent.vercel.app').replace(/\/$/, '');
   const src = new URL(request.url);
   const target = new URL(src.pathname + src.search, uiOrigin + '/');
 

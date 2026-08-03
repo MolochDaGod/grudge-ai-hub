@@ -42,8 +42,9 @@ VPS_AI_AGENT_URL         = ""
 RATE_LIMIT_RPM           = "60"
 RATE_LIMIT_RPM_ADMIN     = "300"
 MAX_PAYLOAD_BYTES        = "1048576"
-# UI origin (proxied for GET / and non-/v1 paths) — not a public fleet domain
-UI_ORIGIN                = "https://grudge-agent.vercel.app"
+# UI origin (proxied for GET / and non-/v1 paths) — Vercel project **grudaagent** (has XAI + GRUDGE_AI_KEY)
+# Do NOT use grudge-agent.vercel.app — that host has no production secrets (Grok/Grudge status stay red).
+UI_ORIGIN                = "https://grudaagent.vercel.app"
 OBSERVATORY_URL          = "https://grudge-fleet-harbor.grudge.workers.dev/api/observatory"
 
 # Async AI events (consumer in index.js — keep for convert/job handoff growth)
