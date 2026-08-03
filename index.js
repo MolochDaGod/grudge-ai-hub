@@ -373,7 +373,7 @@ async function handleHealth(env) {
     status: 'ok',
     ok: true,
     service: 'grudge-ai-hub',
-    version: '1.3.0',
+    version: '1.3.1',
     environment: env.ENVIRONMENT || 'production',
     providers: {
       gemini_byok: geminiOk ? 'configured' : 'missing',
@@ -397,9 +397,24 @@ async function handleHealth(env) {
     grudgeAi,
     treaty: ui?.treaty !== false,
     serverless: ui?.serverless !== false,
+    // Node light = runtime serving traffic (worker + UI API), not only local persistent process
+    node: true,
+    nodeRunner: ui?.nodeRunner === true,
+    nodeMode: ui?.nodeMode || (ui?.serverless !== false ? 'serverless' : 'persistent'),
+    nodeLabel: ui?.nodeLabel
+      || (ui?.nodeRunner
+        ? 'Local Node runner online'
+        : 'Cloud API online (Workers + serverless Node)'),
     skills: ui?.skills ?? null,
     ui_health: ui
-      ? { ok: !!ui.ok, grok: !!ui.grok, grudgeAi: !!ui.grudgeAi, skills: ui.skills }
+      ? {
+          ok: !!ui.ok,
+          grok: !!ui.grok,
+          grudgeAi: !!ui.grudgeAi,
+          skills: ui.skills,
+          node: ui.node !== false,
+          nodeRunner: !!ui.nodeRunner,
+        }
       : { ok: false, note: 'UI health probe failed — check UI_ORIGIN' },
     public_routes: ['/health', '/api/health', '/v1/agents', '/v1/models', '/v1/ssot'],
     timestamp: new Date().toISOString(),
