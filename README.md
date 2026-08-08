@@ -3,17 +3,24 @@
 Centralized AI gateway for all Grudge Studio apps.
 
 **Canonical public URL (ONE TRUTH):** `https://ai.grudge-studio.com`  
-**Version:** 1.3.0 (status-bar health + Grok/Grudge wiring)
+**Version:** 1.5.0 (Workers AI cascade + Groq + puter/toolkit/fleet agent skills)
+
+**Attach map (Forge + fleet clients):** [`docs/FLEET_ATTACH.md`](./docs/FLEET_ATTACH.md)  
+**Forge-side SSOT:** `Grudge-Studio-Forge/docs/AI_FLEET_ATTACH_SSOT.md`
 
 | Path | Role |
 |------|------|
 | `GET /` | GRUDA Agent UI (proxied from `UI_ORIGIN`) |
 | `GET /health` · `/api/health` | Health JSON (public) — includes `grok` / `grudgeAi` for UI dots |
 | `GET /v1/agents` | Agent catalog (public) |
+| `GET /v1/skills` | Agent skill SSOT (sub-agent prompts metadata) |
 | `GET /v1/models` · `/v1/ssot` | Model catalog + SSOT pointers (public) |
 | `POST /v1/*` | Chat / vision / image / embed (auth) |
 
 Alias host `legion-ai.grudge-studio.com` points at the same hub — prefer **ai.grudge-studio.com** in all clients.
+
+**Primary consumers:** Forge free-ai (`provider=grudge-ai`), puter.grudge-studio.com, fleet games via JWT.  
+**Do not** stand up a second brain on Forge — attach via free-ai → this hub.
 
 ## Architecture
 
@@ -52,10 +59,12 @@ npx wrangler deploy --config wrangler.toml          # path routes /health /v1/*
 |--------|------|------|-------------|
 | GET | `/health` | Public | Health + upstream VPS status |
 | GET | `/v1/agents` | Public | List all agent roles |
+| GET | `/v1/skills` | Public | Agent skill SSOT (prompts metadata + models) |
 | POST | `/v1/chat` | API key or Grudge JWT | General chat |
 | POST | `/v1/agents/:role/chat` | API key or Grudge JWT | Role-specialized chat |
 | POST | `/v1/ui/chat` | API key or Grudge JWT | **UI/UX Director** alias (`role=ui`) |
 | POST | `/v1/ux/chat` | API key or Grudge JWT | **UX Flow** alias (`role=ux`) |
+| POST | `/v1/agents/grudox/chat` | API key or Grudge JWT | **GRUDOxALE** — hub/arcade fleet context |
 | POST | `/v1/image/generate` | API key | Stable Diffusion XL image gen |
 | POST | `/v1/embed` | API key | BGE text embeddings |
 | GET | `/v1/admin/usage` | Admin | Usage analytics |
@@ -77,6 +86,32 @@ npx wrangler deploy --config wrangler.toml          # path routes /health /v1/*
 | faction | Llama 3.1 8B → Anthropic | Yes |
 | **ui** | Gemini 3.5 Flash | No — game UI kits, radials, HUDs (ui.grudge-studio.com) |
 | **ux** | Gemini 3.5 Flash | No — auth/editor flow UX |
+| **grudox** | Gemini 3.5 Flash | No — GRUDOX hub + arcade (id.grudge-studio.com, shared Railway account) |
+| **puter** | Gemini 3.5 Flash | No — Puter KV/FS + puter.grudge-studio.com |
+| **toolkit** | Gemini 3.5 Flash | No — PuterJsToolkit dashboard / orchestrator |
+| **fleet** | Gemini 3.5 Flash | No — hosts, brands, deploy topology |
+| **warlords** | Gemini 3.5 Flash | No — Warlords gameplay / grudge6 combat |
+| **convert** | Gemini 3.5 Flash | No — asset bake → R2 |
+| **grudge6** | Gemini 3.5 Flash | No — modular kits / Bip001 / anim packs |
+
+### LLM waterfall (Workers AI best usage)
+
+1. **Gemini BYOK** (`GEMINI_API_KEY`) for `google/*` — skips CF AI Gateway balance  
+2. **Groq** (`GROQ_API_KEY`) free tier — optional mid path  
+3. **Workers AI binding** cascade: primary → `@cf/meta/llama-3.3-70b-instruct-fp8-fast` → `@cf/meta/llama-3.1-8b-instruct-fast`  
+4. **Workers AI REST** only if `WORKERS_AI_USER_TOKEN` (prefer binding)
+
+### Identity SSOT (agents must not invent auth)
+
+| Concern | Authority |
+|---------|-----------|
+| Login UI | `https://id.grudge-studio.com/login` |
+| Player JWT | Railway `grudge-api-production-0d46` |
+| Shared bag / characters | `/api/account` · `/api/characters` (Bearer JWT) |
+| Token keys | `grudge_auth_token`, `grudge_session_token`, `grudge.token`, `sso_token` |
+| GRUDOX hub | `https://grudox.grudge-studio.com` · `/account` · `/arcade/` |
+
+`GET /v1/ssot` returns the live pointer map (auth, game_api, grudox, arena_ws, token_keys).
 
 ## First-Time Deploy
 

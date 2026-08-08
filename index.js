@@ -23,10 +23,20 @@
 import {
   DEFAULT_GEMINI_MODEL,
   DEFAULT_CF_MODEL,
+  STRONG_CF_MODEL,
   isGeminiModel,
   isGeminiByokConfigured,
+  isGroqConfigured,
   runWorkersAi,
 } from './lib/aiRunner.js';
+import {
+  HUB_VERSION,
+  AGENT_SKILLS,
+  ensureAgentList,
+  getRoleConfig,
+  listAgentSkills,
+  CF_MODELS,
+} from './lib/agentSkills.js';
 import { Observatory } from './lib/observatory-client.js';
 
 const DEFAULT_OBS_ENDPOINT =
@@ -82,6 +92,35 @@ export default {
       if (url.pathname === '/v1/ssot' && method === 'GET') {
         return finish(obs, request, corsResponse(handleSsotPointers(), origin), t0);
       }
+      // Public agent skills catalog (system skills SSOT for fleet + puter toolkit)
+      if ((url.pathname === '/v1/skills' || url.pathname === '/v1/agent-skills') && method === 'GET') {
+        return finish(
+          obs,
+          request,
+          corsResponse(
+            json({
+              ok: true,
+              version: HUB_VERSION,
+              count: Object.keys(AGENT_SKILLS).length,
+              skills: listAgentSkills(),
+              models: {
+                default: DEFAULT_GEMINI_MODEL,
+                workers_ai_fast: CF_MODELS.fast,
+                workers_ai_strong: CF_MODELS.strong,
+                workers_ai_scout: CF_MODELS.scout,
+              },
+              waterfall: [
+                'gemini-byok',
+                'groq (if GROQ_API_KEY)',
+                'workers-ai-binding cascade',
+                'workers-ai-rest (optional token)',
+              ],
+            }),
+            origin,
+          ),
+          t0,
+        );
+      }
       // Rapier fleet physics agent context (public — no auth)
       if (url.pathname === '/v1/rapier/checklist' && method === 'GET') {
         return finish(obs, request, corsResponse(handleRapierChecklist(), origin), t0);
@@ -134,7 +173,8 @@ export default {
       }
 
       // POST /v1/agents/:role/chat
-      const roleMatch = url.pathname.match(/^\/v1\/agents\/([a-z]+)\/chat$/);
+      // roles may include digits (grudge6) and short aliases (3d, ui, ux)
+      const roleMatch = url.pathname.match(/^\/v1\/agents\/([a-z0-9]+)\/chat$/);
       if (roleMatch && method === 'POST') {
         return finish(obs, request, corsResponse(await handleChat(request, env, auth, requestId, roleMatch[1]), origin), t0);
       }
@@ -373,15 +413,24 @@ async function handleHealth(env) {
     status: 'ok',
     ok: true,
     service: 'grudge-ai-hub',
-    version: '1.3.1',
+    version: HUB_VERSION,
     environment: env.ENVIRONMENT || 'production',
     providers: {
       gemini_byok: geminiOk ? 'configured' : 'missing',
       workers_ai: 'available',
+      workers_ai_strong: env.STRONG_AI_MODEL || STRONG_CF_MODEL,
+      workers_ai_fast: env.FALLBACK_AI_MODEL || DEFAULT_CF_MODEL,
+      groq: isGroqConfigured(env) ? 'configured' : 'missing',
       vps_ai_agent: vpsStatus,
       grudge_jwt: env.JWT_SECRET ? 'configured' : 'optional',
       xai_grok: grok ? 'configured' : (ui ? 'ui_missing' : 'unknown'),
     },
+    llm_waterfall: [
+      'gemini-byok',
+      'groq',
+      'workers-ai-binding (strong→fast)',
+      'workers-ai-rest',
+    ],
     fleet: {
       identity: 'https://id.grudge-studio.com',
       gameData: 'https://grudge-api-production-0d46.up.railway.app',
@@ -389,8 +438,12 @@ async function handleHealth(env) {
       assets: 'https://assets.grudge-studio.com',
       docs: 'https://info.grudge-studio.com',
       ui: uiOrigin,
+      puter: 'https://puter.grudge-studio.com',
+      grudachain: 'https://grudachain.grudge-studio.com',
+      coder: 'https://coder.grudge-studio.com',
       canonical: 'https://objectstore.grudge-studio.com/api/v1/fleet-canonical.json',
       grok_build: 'https://ai.grudge-studio.com/v1/ssot',
+      skills: 'https://ai.grudge-studio.com/v1/skills',
     },
     // ── Status-bar contract for GRUDA Agent UI (public/index.html checkHealth) ──
     grok,
@@ -416,7 +469,15 @@ async function handleHealth(env) {
           nodeRunner: !!ui.nodeRunner,
         }
       : { ok: false, note: 'UI health probe failed — check UI_ORIGIN' },
-    public_routes: ['/health', '/api/health', '/v1/agents', '/v1/models', '/v1/ssot'],
+    public_routes: [
+      '/health',
+      '/api/health',
+      '/v1/agents',
+      '/v1/models',
+      '/v1/ssot',
+      '/v1/skills',
+    ],
+    agent_skill_count: Object.keys(AGENT_SKILLS).length,
     timestamp: new Date().toISOString(),
   });
 }
@@ -424,12 +485,42 @@ async function handleHealth(env) {
 function handleSsotPointers() {
   return json({
     ok: true,
+    version: HUB_VERSION,
     codex: 'https://info.grudge-studio.com/docs/CANONICAL_CODEX.md',
     fleet_canonical: 'https://objectstore.grudge-studio.com/api/v1/fleet-canonical.json',
     warlords_production: 'https://objectstore.grudge-studio.com/api/v1/warlords-production.json',
     docs_catalog: 'https://objectstore.grudge-studio.com/api/v1/docs-catalog.json',
+    /** ONE TRUTH identity — browser login only; never invent parallel auth hosts. */
     auth: 'https://id.grudge-studio.com',
+    auth_login: 'https://id.grudge-studio.com/login',
     game_api: 'https://grudge-api-production-0d46.up.railway.app',
+    /** Shared account bag / characters / wallet (JWT from Grudge ID). */
+    account_api: 'https://grudge-api-production-0d46.up.railway.app/api/account',
+    characters_api: 'https://grudge-api-production-0d46.up.railway.app/api/characters',
+    wallet_api: 'https://grudge-api-production-0d46.up.railway.app/api/wallet',
+    ai: 'https://ai.grudge-studio.com',
+    skills: 'https://ai.grudge-studio.com/v1/skills',
+    puter: 'https://puter.grudge-studio.com',
+    puter_dashboard: 'https://puter.grudge-studio.com/dashboard',
+    grudachain: 'https://grudachain.grudge-studio.com',
+    coder: 'https://coder.grudge-studio.com',
+    foundry: 'https://character.grudge-studio.com',
+    warlords: 'https://grudgewarlords.com',
+    open: 'https://open.grudge-studio.com',
+    grudox: 'https://grudox.grudge-studio.com',
+    grudox_account: 'https://grudox.grudge-studio.com/account',
+    grudox_arcade: 'https://grudox.grudge-studio.com/arcade/',
+    arena_play: 'https://grudox.grudge-studio.com/arcade/play/arena',
+    arena_ws: '/api/arena',
+    room: 'https://voxgrudge-grudox-room-production.up.railway.app',
+    assets: 'https://assets.grudge-studio.com',
+    fleet_js: 'https://assets.grudge-studio.com/js/grudge-fleet.js',
+    token_keys: [
+      'grudge_auth_token',
+      'grudge_session_token',
+      'grudge.token',
+      'sso_token',
+    ],
     rapier_api: 'https://rapier.rs/docs/api/javascript/JavaScript3D',
     rapier_checklist: '/v1/rapier/checklist',
   });
@@ -535,42 +626,12 @@ async function handlePublicModels(env) {
 
 /** GET /v1/agents */
 async function handleListAgents(env) {
-  const ensureUiUx = (agents) => {
-    const have = new Set(agents.map((a) => a.role));
-    if (!have.has('ui')) {
-      agents.push({
-        role: 'ui',
-        name: 'UI / UX Director',
-        description: 'Game UI kits, HUDs, radials, hotkeys for ui.grudge-studio.com',
-        model: DEFAULT_GEMINI_MODEL,
-        escalates_to_vps: false,
-        enabled: true,
-        endpoint: '/v1/agents/ui/chat',
-        alias: '/v1/ui/chat',
-      });
-    }
-    if (!have.has('ux')) {
-      agents.push({
-        role: 'ux',
-        name: 'UX Flow Expert',
-        description: 'Auth handoffs, editor flows, fleet SSO UX',
-        model: DEFAULT_GEMINI_MODEL,
-        escalates_to_vps: false,
-        enabled: true,
-        endpoint: '/v1/agents/ux/chat',
-        alias: '/v1/ux/chat',
-      });
-    }
-    agents.sort((a, b) => String(a.role).localeCompare(String(b.role)));
-    return agents;
-  };
-
   try {
     const { results } = await env.DB.prepare(
       'SELECT role, display_name, description, model, escalate_to_vps, enabled FROM agent_roles ORDER BY role'
     ).all();
 
-    const agents = ensureUiUx(
+    const agents = ensureAgentList(
       results.map((r) => ({
         role: r.role,
         name: r.display_name,
@@ -579,23 +640,24 @@ async function handleListAgents(env) {
         escalates_to_vps: !!r.escalate_to_vps && isVpsEnabled(env),
         enabled: !!r.enabled,
         endpoint: `/v1/agents/${r.role}/chat`,
+        skills: AGENT_SKILLS[r.role]?.skills,
       })),
     );
 
     return json({
       agents,
       count: agents.length,
+      version: HUB_VERSION,
+      skills_url: '/v1/skills',
     });
   } catch (err) {
-    // D1 unavailable — return static fallback
-    const roles = [
-      'general', 'dev', 'balance', 'lore', 'art', 'mission',
-      'companion', 'faction', 'realms', 'ui', 'ux', 'api', '3d',
-    ];
+    // D1 unavailable — full skill catalog fallback
+    const agents = ensureAgentList(listAgentSkills());
     return json({
-      agents: ensureUiUx(roles.map((r) => ({ role: r, endpoint: `/v1/agents/${r}/chat`, enabled: true }))),
-      count: roles.length,
-      note: 'Static fallback — D1 unavailable',
+      agents,
+      count: agents.length,
+      version: HUB_VERSION,
+      note: 'Static skill SSOT — D1 unavailable',
     });
   }
 }
@@ -633,8 +695,8 @@ async function handleChat(request, env, auth, requestId, role) {
   }
 
   if (!roleConfig) {
-    // Inline fallback for known roles (D1 seed lag / cold deploy)
-    roleConfig = inlineRoleFallback(role);
+    // Inline fallback from agentSkills SSOT (D1 seed lag / cold deploy)
+    roleConfig = getRoleConfig(role);
   }
 
   const useModel = model || roleConfig.model;
@@ -1242,8 +1304,13 @@ const ALLOWED_ORIGINS = [
   'https://ai.grudge-studio.com',
   'https://id.grudge-studio.com',
   'https://open.grudge-studio.com',
+  'https://grudox.grudge-studio.com',
+  'https://carrier.grudge-studio.com',
   'https://character.grudge-studio.com',
   'https://forge.grudge-studio.com',
+  'https://puter.grudge-studio.com',
+  'https://grudachain.grudge-studio.com',
+  'https://coder.grudge-studio.com',
   'https://threejs-player-and-grass.vercel.app',
   'https://grudge-ui-editor.vercel.app',
   'https://gdevelop-assistant.vercel.app',
@@ -1254,61 +1321,14 @@ const ALLOWED_ORIGINS = [
   'https://grudge-angeler.vercel.app',
   'https://grudge-rts.vercel.app',
   'https://grudgecontrol.vercel.app',
+  'https://grudaagent.vercel.app',
   'https://app.puter.com',
   'https://molochdagod.github.io',
 ];
 
-/** D1-offline role defaults (must stay in sync with migrations/003_ui_ux_agent.sql). */
+/** D1-offline role defaults — agentSkills.js SSOT (keep migrations in sync). */
 function inlineRoleFallback(role) {
-  const UI_PROMPT = `You are the Grudge Studio UI/UX Director for game interfaces (ui.grudge-studio.com HYDRA + fleet HUDs).
-Tokens: gold #c9950a, obsidian panels, Cinzel + JetBrains Mono. Themes: fantasy|cyberpunk|fps|rpg.
-When generating UI, JSON only: type uikit_patch | radial | hotkeys | panel. Prefer existing EquipmentManager, Puter KV grudge:{id}:ui-*, fleet auth. No parallel systems.`;
-  const UX_PROMPT = `You are the Grudge Studio UX Flow Expert. Auth: id.grudge-studio.com popup + grudge_token → session JWT → Puter link. Preserve editor state. Output short checklists and empty/error/loading states.`;
-  const REALMS_PROMPT = `You are the Grudge Studio Realms deployment operator for Mine-Loader + Open (open.grudge-studio.com).
-Fleet: SPA mine-loader.vercel.app · edge mine.grudge-studio.com · API mine-loader-api-production.up.railway.app (1 replica + Postgres).
-Open open.grudge-studio.com rewrites blocks/worlds/definitions to Mine-Loader; characters to grudge-api Railway.
-Assets assets.grudge-studio.com · D1 grudge-assets-db · seed-deployments v4 + voxel map chunks (1 block=1m).
-Checklist: healthz, /api/blocks, Railway single replica, Vercel prod aliases, CORS for open + gameopen, no Replit, Mine-Loader is sole world authority.
-Be concise and command-oriented.`;
-
-  if (role === 'ui') {
-    return {
-      role: 'ui',
-      system_prompt: UI_PROMPT,
-      model: DEFAULT_GEMINI_MODEL,
-      temperature: 0.45,
-      max_tokens: 2048,
-      escalate_to_vps: 0,
-    };
-  }
-  if (role === 'ux') {
-    return {
-      role: 'ux',
-      system_prompt: UX_PROMPT,
-      model: DEFAULT_GEMINI_MODEL,
-      temperature: 0.4,
-      max_tokens: 1536,
-      escalate_to_vps: 0,
-    };
-  }
-  if (role === 'realms') {
-    return {
-      role: 'realms',
-      system_prompt: REALMS_PROMPT,
-      model: DEFAULT_GEMINI_MODEL,
-      temperature: 0.35,
-      max_tokens: 2048,
-      escalate_to_vps: 0,
-    };
-  }
-  return {
-    role,
-    system_prompt: `You are the GRUDA Legion AI assistant for Grudge Studio. Role: ${role}.`,
-    model: DEFAULT_GEMINI_MODEL,
-    temperature: 0.7,
-    max_tokens: 1024,
-    escalate_to_vps: 0,
-  };
+  return getRoleConfig(role);
 }
 
 function corsResponse(response, origin) {

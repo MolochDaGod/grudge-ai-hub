@@ -12,7 +12,8 @@
 name               = "grudge-legion-ai"
 main               = "index.js"
 # Workers best-practices: keep date current; nodejs_compat for Buffer/crypto interop
-compatibility_date = "2026-03-01"
+# Workers best-practices: keep date current; nodejs_compat for crypto/fetch interop
+compatibility_date = "2026-08-07"
 compatibility_flags = ["nodejs_compat"]
 account_id         = "ee475864561b02d4588180b8b9acf694"
 workers_dev        = true
@@ -35,12 +36,14 @@ binding = "KV"
 id      = "486553dfacdc40b394e630b1cdfa97d6"
 
 # Secrets (wrangler secret put …) — also run scripts/set-gemini-secret.ps1
-# OBSERVATORY_KEY, GEMINI_API_KEY, VPS_INTERNAL_KEY, WORKERS_AI_USER_TOKEN
+# OBSERVATORY_KEY, GEMINI_API_KEY, GROQ_API_KEY, VPS_INTERNAL_KEY, WORKERS_AI_USER_TOKEN
 # Never put secrets in [vars] or git.
 
 [vars]
 ENVIRONMENT              = "production"
 DEFAULT_AI_MODEL         = "google/gemini-3.5-flash"
+# Free Workers AI cascade (binding-first — best CF usage)
+STRONG_AI_MODEL          = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 FALLBACK_AI_MODEL        = "@cf/meta/llama-3.1-8b-instruct-fast"
 CLOUDFLARE_ACCOUNT_ID    = "ee475864561b02d4588180b8b9acf694"
 VPS_ENABLED              = "false"

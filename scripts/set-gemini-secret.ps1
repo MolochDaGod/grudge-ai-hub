@@ -1,6 +1,9 @@
-# Sync GEMINI_API_KEY from canonical Grudge .env to grudge-legion-ai Worker secret.
+# Sync GEMINI_API_KEY from canonical Grudge .env to AI hub Workers.
+# Canonical public surface: https://ai.grudge-studio.com
 param(
-    [string]$EnvFile = "C:\Users\nugye\Documents\1111111\GrudgeBuilder\.env"
+    [string]$EnvFile = "C:\Users\nugye\Documents\1111111\GrudgeBuilder\.env",
+    # Primary domain worker + API path worker (both run the same index.js)
+    [string[]]$Workers = @("grudge-ai-hub", "grudge-legion-ai")
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,6 +31,9 @@ if (-not $key -or $key -match 'not_yet_configured|placeholder|changeme') {
     exit 1
 }
 
-Write-Host "Setting GEMINI_API_KEY on grudge-legion-ai..."
-$key | npx wrangler secret put GEMINI_API_KEY
-Write-Host "Done. Redeploy if needed: npx wrangler deploy"
+foreach ($name in $Workers) {
+    Write-Host "Setting GEMINI_API_KEY on $name..."
+    $key | npx wrangler secret put GEMINI_API_KEY --name $name
+}
+Write-Host "Done. Canonical UI+API: https://ai.grudge-studio.com"
+Write-Host "Redeploy: npm run deploy"

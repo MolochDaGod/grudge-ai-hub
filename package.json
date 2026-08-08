@@ -1,12 +1,13 @@
 {
   "name": "grudge-legion-ai",
-  "version": "1.2.0",
+  "version": "1.5.0",
   "private": true,
-  "description": "GRUDA Legion AI Hub — Cloudflare Worker gateway for Grudge Studio",
+  "description": "GRUDA Legion AI Hub — Cloudflare Worker gateway for Grudge Studio (Workers AI + Gemini BYOK + Groq + agent skills)",
   "scripts": {
     "deploy": "wrangler deploy && wrangler deploy --config wrangler.domain.toml",
     "deploy:api": "wrangler deploy",
     "deploy:domain": "wrangler deploy --config wrangler.domain.toml",
+    "db:skills": "wrangler d1 execute grudge-ai-hub --remote --file=migrations/004_puter_fleet_skills.sql",
     "tail": "wrangler tail grudge-legion-ai",
     "tail:domain": "wrangler tail grudge-ai-hub"
   },
