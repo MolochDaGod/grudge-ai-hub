@@ -3,15 +3,18 @@
 Centralized AI gateway for all Grudge Studio apps.
 
 **Canonical public URL (ONE TRUTH):** `https://ai.grudge-studio.com`  
-**Version:** 1.5.0 (Workers AI cascade + Groq + puter/toolkit/fleet agent skills)
+**Version:** 1.6.0 (context pack + info/GRD/agentic skills + deploy hardening)
 
-**Attach map (Forge + fleet clients):** [`docs/FLEET_ATTACH.md`](./docs/FLEET_ATTACH.md)  
+**Attach map:** [`docs/FLEET_ATTACH.md`](./docs/FLEET_ATTACH.md)  
+**AI context (Studio + info + agentic + GRD):** [`docs/AI_CONTEXT_SSOT.md`](./docs/AI_CONTEXT_SSOT.md)  
+**Deploy hardening:** [`docs/DEPLOY_HARDENING.md`](./docs/DEPLOY_HARDENING.md)  
 **Forge-side SSOT:** `Grudge-Studio-Forge/docs/AI_FLEET_ATTACH_SSOT.md`
 
 | Path | Role |
 |------|------|
 | `GET /` | GRUDA Agent UI (proxied from `UI_ORIGIN`) |
-| `GET /health` · `/api/health` | Health JSON (public) — includes `grok` / `grudgeAi` for UI dots |
+| `GET /health` · `/api/health` | Health JSON (public) — fleet map + context_version |
+| `GET /v1/context` | **Full fleet context pack** (agents load first) |
 | `GET /v1/agents` | Agent catalog (public) |
 | `GET /v1/skills` | Agent skill SSOT (sub-agent prompts metadata) |
 | `GET /v1/models` · `/v1/ssot` | Model catalog + SSOT pointers (public) |
@@ -60,6 +63,8 @@ npx wrangler deploy --config wrangler.toml          # path routes /health /v1/*
 | GET | `/health` | Public | Health + upstream VPS status |
 | GET | `/v1/agents` | Public | List all agent roles |
 | GET | `/v1/skills` | Public | Agent skill SSOT (prompts metadata + models) |
+| GET | `/v1/context` | Public | Fleet context pack (info, GRD, agentic, deploy) |
+| GET | `/v1/ssot` | Public | URL pointers + context link |
 | POST | `/v1/chat` | API key or Grudge JWT | General chat |
 | POST | `/v1/agents/:role/chat` | API key or Grudge JWT | Role-specialized chat |
 | POST | `/v1/ui/chat` | API key or Grudge JWT | **UI/UX Director** alias (`role=ui`) |

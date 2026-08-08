@@ -1,9 +1,10 @@
 # Legion attach map — fleet consumers
 
 **Canonical brain:** `https://ai.grudge-studio.com`  
-**Version:** 1.5.0+
+**Version:** 1.6.0+  
+**Context pack:** `GET /v1/context` · [AI_CONTEXT_SSOT.md](./AI_CONTEXT_SSOT.md) · [DEPLOY_HARDENING.md](./DEPLOY_HARDENING.md)
 
-This doc is the **attach SSOT for clients** (Forge, Puter toolkit, Open, Coder).  
+This doc is the **attach SSOT for clients** (Forge, Puter toolkit, Open, Coder/GRD).  
 Forge-side detail: `Grudge-Studio-Forge/docs/AI_FLEET_ATTACH_SSOT.md`.
 
 ---
@@ -23,9 +24,14 @@ Forge-side detail: `Grudge-Studio-Forge/docs/AI_FLEET_ATTACH_SSOT.md`.
 
 Public catalog: `GET https://ai.grudge-studio.com/v1/skills`
 
-| Role | Use from Forge |
+| Role | Use from Forge / fleet |
 |------|----------------|
 | `dev` | Default editor code/scene tools |
+| `info` | info.grudge-studio.com + ObjectStore codex |
+| `agentic` | Multi-agent / GRUDAIDE / orchestration |
+| `coder` / `grudachain` | GRD IDE plane (coder = grudachain host) |
+| `deploy` | Deploy hardening + smoke |
+| `forge` | free-ai attach + R3F editor |
 | `toolkit` | PuterJsToolkit / env |
 | `puter` | Puter KV/FS law |
 | `fleet` | Hosts / deploy topology |
@@ -92,9 +98,11 @@ curl -s https://ai.grudge-studio.com/health
 
 ```bash
 npm run deploy          # legion-ai + domain hub
+npm run deploy:hard     # deploy + D1 skills + smoke
 npm run deploy:api      # path worker only
 npm run deploy:domain   # UI host only
-npm run db:skills       # re-seed agent roles to D1
+npm run db:skills:all   # re-seed puter + context/agentic roles
+npm run smoke           # post-deploy URL checks
 ```
 
 ---
@@ -117,7 +125,8 @@ See Forge `docs/ACCOUNT_PUTER_ENGINE_SSOT.md`.
 - [x] free-ai proxies `provider=grudge-ai`  
 - [x] Service binding free-ai → legion-ai (Forge free-ai 1.5.1)  
 - [x] Account/Puter engine docs  
+- [x] Forge SPA deploy (GHA)  
+- [x] `/v1/context` + info/GRD/agentic skills 1.6.0  
 - [ ] Legion `GROQ_API_KEY` (needs real key)  
 - [ ] free-ai `GRUDGE_AI_KEY` for guests  
-- [ ] Forge SPA deploy (Auto UI + account mirror)  
 - [ ] Agent jobs invoke Legion roles  

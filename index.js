@@ -37,6 +37,13 @@ import {
   listAgentSkills,
   CF_MODELS,
 } from './lib/agentSkills.js';
+import {
+  buildContextPack,
+  ONE_TRUTH,
+  AI_DEPLOYABLE,
+  DEPLOY_HARDENING,
+  CONTEXT_VERSION,
+} from './lib/fleetContext.js';
 import { Observatory } from './lib/observatory-client.js';
 
 const DEFAULT_OBS_ENDPOINT =
@@ -92,6 +99,15 @@ export default {
       if (url.pathname === '/v1/ssot' && method === 'GET') {
         return finish(obs, request, corsResponse(handleSsotPointers(), origin), t0);
       }
+      // Full fleet context pack for agents (info, GRD, agentic, deploy)
+      if (
+        (url.pathname === '/v1/context' ||
+          url.pathname === '/v1/fleet-context' ||
+          url.pathname === '/v1/ai-context') &&
+        method === 'GET'
+      ) {
+        return finish(obs, request, corsResponse(json(buildContextPack()), origin), t0);
+      }
       // Public agent skills catalog (system skills SSOT for fleet + puter toolkit)
       if ((url.pathname === '/v1/skills' || url.pathname === '/v1/agent-skills') && method === 'GET') {
         return finish(
@@ -101,6 +117,8 @@ export default {
             json({
               ok: true,
               version: HUB_VERSION,
+              context_version: CONTEXT_VERSION,
+              context: 'https://ai.grudge-studio.com/v1/context',
               count: Object.keys(AGENT_SKILLS).length,
               skills: listAgentSkills(),
               models: {
@@ -115,6 +133,8 @@ export default {
                 'workers-ai-binding cascade',
                 'workers-ai-rest (optional token)',
               ],
+              load_hint:
+                'Agents: GET /v1/context first for Grudge Studio + info + GRD/agentic deploy map',
             }),
             origin,
           ),
@@ -437,14 +457,23 @@ async function handleHealth(env) {
       objectStore: 'https://objectstore.grudge-studio.com/api/v1',
       assets: 'https://assets.grudge-studio.com',
       docs: 'https://info.grudge-studio.com',
+      docs_hub: 'https://info.grudge-studio.com/docs',
+      codex: 'https://info.grudge-studio.com/docs/CANONICAL_CODEX.md',
       ui: uiOrigin,
       puter: 'https://puter.grudge-studio.com',
       grudachain: 'https://grudachain.grudge-studio.com',
       coder: 'https://coder.grudge-studio.com',
+      forge: 'https://forge.grudge-studio.com',
+      open: 'https://open.grudge-studio.com',
+      warlords: 'https://grudgewarlords.com',
       canonical: 'https://objectstore.grudge-studio.com/api/v1/fleet-canonical.json',
       grok_build: 'https://ai.grudge-studio.com/v1/ssot',
       skills: 'https://ai.grudge-studio.com/v1/skills',
+      context: 'https://ai.grudge-studio.com/v1/context',
     },
+    context_version: CONTEXT_VERSION,
+    ai_planes: Object.keys(AI_DEPLOYABLE),
+    deploy_hardening_principles: DEPLOY_HARDENING.principles.slice(0, 4),
     // ── Status-bar contract for GRUDA Agent UI (public/index.html checkHealth) ──
     grok,
     grudgeAi,
@@ -476,6 +505,7 @@ async function handleHealth(env) {
       '/v1/models',
       '/v1/ssot',
       '/v1/skills',
+      '/v1/context',
     ],
     agent_skill_count: Object.keys(AGENT_SKILLS).length,
     timestamp: new Date().toISOString(),
@@ -486,24 +516,34 @@ function handleSsotPointers() {
   return json({
     ok: true,
     version: HUB_VERSION,
-    codex: 'https://info.grudge-studio.com/docs/CANONICAL_CODEX.md',
-    fleet_canonical: 'https://objectstore.grudge-studio.com/api/v1/fleet-canonical.json',
-    warlords_production: 'https://objectstore.grudge-studio.com/api/v1/warlords-production.json',
-    docs_catalog: 'https://objectstore.grudge-studio.com/api/v1/docs-catalog.json',
+    context_version: CONTEXT_VERSION,
+    /** Full contextual pack — agents should load this for Grudge Studio understanding */
+    context: 'https://ai.grudge-studio.com/v1/context',
+    codex: ONE_TRUTH.docs_codex,
+    docs: ONE_TRUTH.docs,
+    info: 'https://info.grudge-studio.com',
+    fleet_canonical: ONE_TRUTH.fleet_canonical,
+    warlords_production: ONE_TRUTH.warlords_production,
+    docs_catalog: ONE_TRUTH.docs_catalog,
     /** ONE TRUTH identity — browser login only; never invent parallel auth hosts. */
-    auth: 'https://id.grudge-studio.com',
-    auth_login: 'https://id.grudge-studio.com/login',
-    game_api: 'https://grudge-api-production-0d46.up.railway.app',
+    auth: ONE_TRUTH.identity,
+    auth_login: ONE_TRUTH.identity_login,
+    game_api: ONE_TRUTH.player_state,
     /** Shared account bag / characters / wallet (JWT from Grudge ID). */
-    account_api: 'https://grudge-api-production-0d46.up.railway.app/api/account',
-    characters_api: 'https://grudge-api-production-0d46.up.railway.app/api/characters',
-    wallet_api: 'https://grudge-api-production-0d46.up.railway.app/api/wallet',
-    ai: 'https://ai.grudge-studio.com',
-    skills: 'https://ai.grudge-studio.com/v1/skills',
-    puter: 'https://puter.grudge-studio.com',
+    account_api: `${ONE_TRUTH.player_state}/api/account`,
+    characters_api: `${ONE_TRUTH.player_state}/api/characters`,
+    wallet_api: `${ONE_TRUTH.player_state}/api/wallet`,
+    definitions: ONE_TRUTH.definitions,
+    ai: ONE_TRUTH.ai,
+    skills: ONE_TRUTH.ai_skills,
+    puter: ONE_TRUTH.puter,
     puter_dashboard: 'https://puter.grudge-studio.com/dashboard',
+    /** GRD / Grudachain agentic IDE plane */
+    grd: 'https://coder.grudge-studio.com',
     grudachain: 'https://grudachain.grudge-studio.com',
     coder: 'https://coder.grudge-studio.com',
+    forge: 'https://forge.grudge-studio.com',
+    forge_free_ai: 'https://forge.grudge-studio.com/api/free-ai/',
     foundry: 'https://character.grudge-studio.com',
     warlords: 'https://grudgewarlords.com',
     open: 'https://open.grudge-studio.com',
@@ -513,14 +553,16 @@ function handleSsotPointers() {
     arena_play: 'https://grudox.grudge-studio.com/arcade/play/arena',
     arena_ws: '/api/arena',
     room: 'https://voxgrudge-grudox-room-production.up.railway.app',
-    assets: 'https://assets.grudge-studio.com',
+    assets: ONE_TRUTH.binaries,
     fleet_js: 'https://assets.grudge-studio.com/js/grudge-fleet.js',
-    token_keys: [
-      'grudge_auth_token',
-      'grudge_session_token',
-      'grudge.token',
-      'sso_token',
-    ],
+    token_keys: ONE_TRUTH.token_keys,
+    ai_deployable: Object.fromEntries(
+      Object.entries(AI_DEPLOYABLE).map(([k, v]) => [
+        k,
+        { id: v.id, host: v.host || v.hosts?.[0], role: v.role },
+      ]),
+    ),
+    deploy_hardening: DEPLOY_HARDENING.post_deploy_smoke,
     rapier_api: 'https://rapier.rs/docs/api/javascript/JavaScript3D',
     rapier_checklist: '/v1/rapier/checklist',
   });
