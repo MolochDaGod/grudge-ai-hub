@@ -127,6 +127,8 @@ See Forge `docs/ACCOUNT_PUTER_ENGINE_SSOT.md`.
 - [x] Account/Puter engine docs  
 - [x] Forge SPA deploy (GHA)  
 - [x] `/v1/context` + info/GRD/agentic skills 1.6.0  
-- [ ] Legion `GROQ_API_KEY` (needs real key)  
+- [x] Legion `GROQ_API_KEY` (both workers)  
+- [x] free-ai + puter `GROQ_API_KEY`  
+- [x] `POLY_PIZZA_API_KEY` on Legion / free-ai / puter (edge only)  
 - [ ] free-ai `GRUDGE_AI_KEY` for guests  
 - [ ] Agent jobs invoke Legion roles  

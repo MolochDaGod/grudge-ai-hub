@@ -441,6 +441,7 @@ async function handleHealth(env) {
       workers_ai_strong: env.STRONG_AI_MODEL || STRONG_CF_MODEL,
       workers_ai_fast: env.FALLBACK_AI_MODEL || DEFAULT_CF_MODEL,
       groq: isGroqConfigured(env) ? 'configured' : 'missing',
+      poly_pizza: env.POLY_PIZZA_API_KEY || env.POLY_PIZZA_API ? 'configured' : 'missing',
       vps_ai_agent: vpsStatus,
       grudge_jwt: env.JWT_SECRET ? 'configured' : 'optional',
       xai_grok: grok ? 'configured' : (ui ? 'ui_missing' : 'unknown'),
