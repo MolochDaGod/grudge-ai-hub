@@ -462,6 +462,7 @@ async function handleHealth(env) {
       codex: 'https://info.grudge-studio.com/docs/CANONICAL_CODEX.md',
       ui: uiOrigin,
       puter: 'https://puter.grudge-studio.com',
+      puter_space: 'https://ai.grudge-studio.com/puter-space',
       grudachain: 'https://grudachain.grudge-studio.com',
       coder: 'https://coder.grudge-studio.com',
       forge: 'https://forge.grudge-studio.com',
@@ -507,6 +508,7 @@ async function handleHealth(env) {
       '/v1/ssot',
       '/v1/skills',
       '/v1/context',
+      '/puter-space',
     ],
     agent_skill_count: Object.keys(AGENT_SKILLS).length,
     timestamp: new Date().toISOString(),
@@ -538,6 +540,7 @@ function handleSsotPointers() {
     ai: ONE_TRUTH.ai,
     skills: ONE_TRUTH.ai_skills,
     puter: ONE_TRUTH.puter,
+    puter_space: ONE_TRUTH.puter_space,
     puter_dashboard: 'https://puter.grudge-studio.com/dashboard',
     /** GRD / Grudachain agentic IDE plane */
     grd: 'https://coder.grudge-studio.com',

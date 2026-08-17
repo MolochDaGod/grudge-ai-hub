@@ -3,7 +3,7 @@
 **Canonical pack (machine):** `GET https://ai.grudge-studio.com/v1/context`  
 **Pointers:** `GET https://ai.grudge-studio.com/v1/ssot`  
 **Agent roles:** `GET https://ai.grudge-studio.com/v1/skills`  
-**Version:** 1.6.0+ · code `lib/fleetContext.js` + `lib/agentSkills.js`
+**Version:** 1.6.1 · code `lib/fleetContext.js` + `lib/agentSkills.js`
 
 This is how **Legion and fleet agents** learn Grudge Studio topology, **info.grudge-studio.com**, deployable AI systems, **agentic / GRD Grudachain**, and deploy law — without inventing parallel hosts.
 
@@ -26,11 +26,12 @@ This is how **Legion and fleet agents** learn Grudge Studio topology, **info.gru
 | Identity JWT | `id.grudge-studio.com` |
 | Player bag / heroes / wallet | Railway `grudge-api-production-0d46` |
 | Definitions JSON | ObjectStore `/api/v1` (info may mirror) |
-| Binaries | `assets.grudge-studio.com` (R2) |
+| Binaries | `assets.grudge-studio.com` (R2) — MIME + `loadRaceKit` / `gltfProdLoader` |
 | Asset search index | D1 only — not player SSOT |
+| Account cloud files | **https://ai.grudge-studio.com/puter-space** (Puter FS + `*.puter.site` — never bag) |
 | Docs hub | **info.grudge-studio.com** (`/` → `/docs`) |
 | Fleet AI brain | **ai.grudge-studio.com** (Legion) |
-| Puter | User-Pays cache / projects only |
+| Puter toolkit | `puter.grudge-studio.com` — User-Pays cache / projects only |
 
 ---
 

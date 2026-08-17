@@ -8,8 +8,13 @@ const URLS = [
   { url: 'https://ai.grudge-studio.com/health', expect: (j) => j?.ok || j?.status === 'ok' },
   {
     url: 'https://ai.grudge-studio.com/v1/context',
-    expect: (j) => j?.ok && j?.one_truth && j?.ai_deployable,
+    expect: (j) =>
+      j?.ok &&
+      j?.one_truth?.puter_space &&
+      j?.one_truth?.asset_serve?.host &&
+      j?.ai_deployable,
   },
+  { url: 'https://ai.grudge-studio.com/puter-space', expect: null, html: true },
   {
     url: 'https://ai.grudge-studio.com/v1/skills',
     expect: (j) => j?.ok && (j?.count ?? 0) >= 20,

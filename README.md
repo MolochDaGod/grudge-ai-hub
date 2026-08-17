@@ -3,7 +3,7 @@
 Centralized AI gateway for all Grudge Studio apps.
 
 **Canonical public URL (ONE TRUTH):** `https://ai.grudge-studio.com`  
-**Version:** 1.6.0 (context pack + info/GRD/agentic skills + deploy hardening)
+**Version:** 1.6.1 (puter-space account cloud + asset MIME/loader law in `/v1/context`)
 
 **Attach map:** [`docs/FLEET_ATTACH.md`](./docs/FLEET_ATTACH.md)  
 **AI context (Studio + info + agentic + GRD):** [`docs/AI_CONTEXT_SSOT.md`](./docs/AI_CONTEXT_SSOT.md)  
@@ -13,8 +13,9 @@ Centralized AI gateway for all Grudge Studio apps.
 | Path | Role |
 |------|------|
 | `GET /` | GRUDA Agent UI (proxied from `UI_ORIGIN`) |
+| `GET /puter-space` | Player account cloud (Puter FS + `*.puter.site` deploy — never bag) |
 | `GET /health` · `/api/health` | Health JSON (public) — fleet map + context_version |
-| `GET /v1/context` | **Full fleet context pack** (agents load first) |
+| `GET /v1/context` | **Full fleet context pack** (agents load first) — includes `puter_space` + `asset_serve` |
 | `GET /v1/agents` | Agent catalog (public) |
 | `GET /v1/skills` | Agent skill SSOT (sub-agent prompts metadata) |
 | `GET /v1/models` · `/v1/ssot` | Model catalog + SSOT pointers (public) |
