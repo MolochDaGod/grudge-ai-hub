@@ -12,6 +12,10 @@
  *   POST   /v1/chat                 General chat (auth)
  *   POST   /v1/agents/:role/chat    Role-specialized chat (auth)
  *   POST   /v1/vision               Image + text (Gemini vision, auth)
+ *   GET    /v1/icons/:uuid          ICON-* lookup + last review (public)
+ *   GET    /v1/icons/reviews        Cursor page of D1 icon_reviews (public)
+ *   POST   /v1/icons/review         Review one PNG by ICON UUID (auth)
+ *   POST   /v1/icons/review/stream  NDJSON batch stream (auth, max 8)
  *   POST   /v1/image/generate       Image generation (auth)
  *   POST   /v1/embed                Text embeddings (auth)
  *   GET    /v1/admin/usage          Usage analytics (admin)
@@ -24,6 +28,7 @@ import {
   DEFAULT_GEMINI_MODEL,
   DEFAULT_CF_MODEL,
   STRONG_CF_MODEL,
+  DEFAULT_GROQ_MODEL,
   isGeminiModel,
   isGeminiByokConfigured,
   isGroqConfigured,
@@ -45,6 +50,12 @@ import {
   CONTEXT_VERSION,
 } from './lib/fleetContext.js';
 import { Observatory } from './lib/observatory-client.js';
+import {
+  handleIconLookup,
+  handleIconReviewsList,
+  handleIconReviewPost,
+  handleIconReviewStream,
+} from './lib/iconReview.js';
 
 const DEFAULT_OBS_ENDPOINT =
   'https://grudge-fleet-harbor.grudge.workers.dev/api/observatory';
@@ -98,6 +109,13 @@ export default {
       }
       if (url.pathname === '/v1/ssot' && method === 'GET') {
         return finish(obs, request, corsResponse(handleSsotPointers(), origin), t0);
+      }
+      if (url.pathname === '/v1/icons/reviews' && method === 'GET') {
+        return finish(obs, request, corsResponse(await handleIconReviewsList(url, env), origin), t0);
+      }
+      if (url.pathname.startsWith('/v1/icons/') && method === 'GET') {
+        const looked = await handleIconLookup(url, env);
+        if (looked) return finish(obs, request, corsResponse(looked, origin), t0);
       }
       // Full fleet context pack for agents (info, GRD, agentic, deploy)
       if (
@@ -212,6 +230,12 @@ export default {
       // POST /v1/vision — Gemini multimodal (logo analysis, screenshots, etc.)
       if (url.pathname === '/v1/vision' && method === 'POST') {
         return finish(obs, request, corsResponse(await handleVision(request, env, auth, requestId), origin), t0);
+      }
+      if (url.pathname === '/v1/icons/review/stream' && method === 'POST') {
+        return finish(obs, request, corsResponse(handleIconReviewStream(request, env, auth, requestId), origin), t0);
+      }
+      if (url.pathname === '/v1/icons/review' && method === 'POST') {
+        return finish(obs, request, corsResponse(await handleIconReviewPost(request, env, auth, requestId), origin), t0);
       }
 
       // POST /v1/image/generate
@@ -441,12 +465,15 @@ async function handleHealth(env) {
       workers_ai_strong: env.STRONG_AI_MODEL || STRONG_CF_MODEL,
       workers_ai_fast: env.FALLBACK_AI_MODEL || DEFAULT_CF_MODEL,
       groq: isGroqConfigured(env) ? 'configured' : 'missing',
+      cohere_dedicated: env.COHERE_API_KEY ? 'configured' : 'missing',
+      cohere_base: env.COHERE_BASE_URL || 'https://api.grudge-s010rs.cloud.cohere.com',
       poly_pizza: env.POLY_PIZZA_API_KEY || env.POLY_PIZZA_API ? 'configured' : 'missing',
       vps_ai_agent: vpsStatus,
       grudge_jwt: env.JWT_SECRET ? 'configured' : 'optional',
       xai_grok: grok ? 'configured' : (ui ? 'ui_missing' : 'unknown'),
     },
     llm_waterfall: [
+      'cohere-dedicated (grudge-s010rs)',
       'gemini-byok',
       'groq',
       'workers-ai-binding (strong→fast)',
@@ -557,8 +584,20 @@ function handleSsotPointers() {
     arena_play: 'https://grudox.grudge-studio.com/arcade/play/arena',
     arena_ws: '/api/arena',
     room: 'https://voxgrudge-grudox-room-production.up.railway.app',
+    vibe_pack: ONE_TRUTH.vibe_pack,
+    rest: ONE_TRUTH.rest,
     assets: ONE_TRUTH.binaries,
     fleet_js: 'https://assets.grudge-studio.com/js/grudge-fleet.js',
+    icons: {
+      registry: 'https://info.grudge-studio.com/api/v1/icon-registry.json',
+      search_index: 'https://info.grudge-studio.com/api/v1/icon-search-index.json',
+      browser: 'https://info.grudge-studio.com/ICON_BROWSER.html',
+      docs: 'https://info.grudge-studio.com/docs/ICON-ASSET-LIBRARY.md',
+      resolve: 'ICON-* uuid or /icons/... path via resolveIconUrl — never hardcode github.io',
+      lookup: 'GET https://ai.grudge-studio.com/v1/icons/{ICON-UUID}',
+      review: 'POST https://ai.grudge-studio.com/v1/icons/review',
+      stream: 'POST https://ai.grudge-studio.com/v1/icons/review/stream',
+    },
     token_keys: ONE_TRUTH.token_keys,
     ai_deployable: Object.fromEntries(
       Object.entries(AI_DEPLOYABLE).map(([k, v]) => [
@@ -653,20 +692,59 @@ async function handlePublicModels(env) {
   return json({
     ok: true,
     service: 'grudge-ai-hub',
-    version: '1.2.0',
-    models,
+    version: HUB_VERSION,
+    models: [
+      ...models,
+      {
+        id: env.STRONG_AI_MODEL || STRONG_CF_MODEL,
+        provider: 'workers_ai',
+        capability: 'chat',
+        default: false,
+      },
+      {
+        id: DEFAULT_GROQ_MODEL,
+        provider: 'groq',
+        capability: 'chat',
+        default: false,
+        note: 'free-tier when GROQ_API_KEY set',
+      },
+      {
+        id: env.COHERE_CHAT_MODEL || 'command-r',
+        provider: 'cohere-dedicated',
+        capability: 'chat',
+        default: false,
+        note: 'grudge-s010rs  https://api.grudge-s010rs.cloud.cohere.com',
+      },
+      {
+        id: env.COHERE_EMBED_MODEL || 'embed-english-v3.0',
+        provider: 'cohere-dedicated',
+        capability: 'embed',
+        default: false,
+      },
+    ],
     agents,
     auth: {
       chat: 'Bearer API key (D1 api_keys) or Grudge ID JWT when JWT_SECRET is set',
-      public: ['/v1/models', '/v1/agents', '/health', '/v1/ssot'],
+      public: ['/v1/models', '/v1/agents', '/health', '/v1/ssot', '/v1/context', '/v1/skills'],
     },
     endpoints: {
+      health: 'GET /health',
+      models: 'GET /v1/models',
+      context: 'GET /v1/context',
+      skills: 'GET /v1/skills',
+      agents: 'GET /v1/agents',
       chat: 'POST /v1/chat',
       agent_chat: 'POST /v1/agents/:role/chat',
+      vibe3d: 'POST /v1/agents/vibe3d/chat',
       vision: 'POST /v1/vision',
+      icon_lookup: 'GET /v1/icons/:ICON-UUID',
+      icon_reviews: 'GET /v1/icons/reviews?cursor=&limit=&category=&name_match=',
+      icon_review: 'POST /v1/icons/review { grudgeUuid }',
+      icon_review_stream: 'POST /v1/icons/review/stream NDJSON max 8',
       image: 'POST /v1/image/generate',
       embed: 'POST /v1/embed',
     },
+    vibe_pack: ONE_TRUTH.vibe_pack,
   });
 }
 
