@@ -1121,7 +1121,10 @@ function isVpsEnabled(env) {
 async function getVpsHealthStatus(env) {
   if (!isVpsEnabled(env)) return 'disabled';
   try {
-    const resp = await fetch(`${env.VPS_AI_AGENT_URL}/health`, { signal: AbortSignal.timeout(5000) });
+    const resp = await fetch(`${env.VPS_AI_AGENT_URL}/health`, {
+      signal: AbortSignal.timeout(5000),
+      headers: { 'User-Agent': 'Mozilla/5.0 GrudgeLegion/1.6.8' },
+    });
     return resp.ok ? 'healthy' : `error-${resp.status}`;
   } catch {
     return 'unreachable';
@@ -1166,6 +1169,7 @@ async function escalateToVps(env, role, messages, temperature, maxTokens, reques
       method: endpoint === '/ai/faction/intel' ? 'GET' : 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 GrudgeLegion/1.6.8',
         'x-internal-key': internalKey || '',
         'X-Request-Id': requestId,
       },
