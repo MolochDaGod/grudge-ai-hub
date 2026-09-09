@@ -12,7 +12,18 @@ const URLS = [
       j?.ok &&
       j?.one_truth?.puter_space &&
       j?.one_truth?.asset_serve?.host &&
-      j?.ai_deployable,
+      j?.ai_deployable &&
+      Array.isArray(j?.env_recipes) &&
+      j.env_recipes.some((r) => r.id === 'grudge-play') &&
+      j?.wiring?.attach,
+  },
+  {
+    url: 'https://ai.grudge-studio.com/v1/env-recipes',
+    expect: (j) =>
+      j?.ok &&
+      Array.isArray(j?.recipes) &&
+      j.recipes.some((r) => r.id === 'grudge-play') &&
+      j?.npm_law?.play_three === '0.185.0',
   },
   { url: 'https://ai.grudge-studio.com/puter-space', expect: null, html: true },
   {

@@ -1,0 +1,37 @@
+{
+  "name": "grudge-play",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Fleet play package — Three catalog r185 + Rapier CCT. Puter is cloud, not the tick.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "probe:fleet": "node scripts/probe-fleet.mjs"
+  },
+  "dependencies": {
+    "three": "0.185.0",
+    "@dimforge/rapier3d-compat": "^0.19.0",
+    "puter": "^2.0.0"
+  },
+  "devDependencies": {
+    "vite": "^6.2.0"
+  },
+  "grudge": {
+    "recipe": "grudge-play",
+    "legion_roles": ["director", "animator", "dev"],
+    "assets": "https://assets.grudge-studio.com",
+    "objectstore": "https://objectstore.grudge-studio.com/api/v1",
+    "ai": "https://ai.grudge-studio.com",
+    "puter_space": "/grudge-studio",
+    "rules": [
+      "Play path is Three.js + Rapier only",
+      "One AnimationMixer per character root",
+      "GLB/GLTF runtime clips — no Mixamo FBX on the tick",
+      "Rapier CCT owns translation; clips are in-place unless marked root-motion",
+      "Do not npm i grudge-studio — unscoped package is not play path",
+      "Puter.js is project + asset cloud, not the animation runtime"
+    ]
+  }
+}

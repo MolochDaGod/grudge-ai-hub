@@ -1,0 +1,28 @@
+{
+  "name": "grudge-vibe-mp",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "PROTOTYPE ONLY — React 19 + R3F + three ^0.175 + SpacetimeDB 2. Not Warlords play. Not loadRaceKit. Not ThreeFlow.",
+  "scripts": {
+    "dev": "cd client && npm run dev",
+    "install:all": "cd client && npm install"
+  },
+  "grudge": {
+    "recipe": "grudge-vibe-mp",
+    "prototype": true,
+    "legion_roles": ["vibe3d"],
+    "git": "https://github.com/MolochDaGod/vibe-coding-starter-pack-3d-multiplayer",
+    "coder_template": "vibe-3d-multiplayer",
+    "not": [
+      "Warlords play",
+      "loadRaceKit",
+      "Carrier rooms",
+      "ThreeFlow Vue bundle"
+    ],
+    "rules": [
+      "Keep this pin set off the fleet play path",
+      "Do not copy these versions into Forge or character kits"
+    ]
+  }
+}
