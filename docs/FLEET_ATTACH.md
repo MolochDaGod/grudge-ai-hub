@@ -2,11 +2,7 @@
 
 **Canonical brain:** `https://ai.grudge-studio.com`  
 **Version:** 1.6.11  
-<<<<<<< Updated upstream
 **Context pack:** `GET /v1/context` · [AI_CONTEXT_SSOT.md](./AI_CONTEXT_SSOT.md) · [DEPLOY_HARDENING.md](./DEPLOY_HARDENING.md) · [WIRING.md](./WIRING.md)
-=======
-**Context pack:** `GET /v1/context` · [AI_CONTEXT_SSOT.md](./AI_CONTEXT_SSOT.md) · [DEPLOY_HARDENING.md](./DEPLOY_HARDENING.md)
->>>>>>> Stashed changes
 
 This doc is the **attach SSOT for clients** (Forge, Puter toolkit, Open, Coder/GRD).  
 Forge-side detail: `Grudge-Studio-Forge/docs/AI_FLEET_ATTACH_SSOT.md`.
