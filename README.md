@@ -3,11 +3,12 @@
 Centralized AI gateway for all Grudge Studio apps.
 
 **Canonical public URL (ONE TRUTH):** `https://ai.grudge-studio.com`  
-**Version:** 1.6.1 (puter-space account cloud + asset MIME/loader law in `/v1/context`)
+**Version:** 1.6.11 (env recipes + fleet wiring in `/v1/context` + `/v1/env-recipes`)
 
 **Attach map:** [`docs/FLEET_ATTACH.md`](./docs/FLEET_ATTACH.md)  
 **AI context (Studio + info + agentic + GRD):** [`docs/AI_CONTEXT_SSOT.md`](./docs/AI_CONTEXT_SSOT.md)  
 **Deploy hardening:** [`docs/DEPLOY_HARDENING.md`](./docs/DEPLOY_HARDENING.md)  
+**Wiring other systems:** [`docs/WIRING.md`](./docs/WIRING.md)  
 **Forge-side SSOT:** `Grudge-Studio-Forge/docs/AI_FLEET_ATTACH_SSOT.md`
 
 | Path | Role |
@@ -66,6 +67,7 @@ npx wrangler deploy --config wrangler.toml          # path routes /health /v1/*
 | GET | `/v1/skills` | Public | Agent skill SSOT (prompts metadata + models) |
 | GET | `/v1/context` | Public | Fleet context pack (info, GRD, agentic, deploy) |
 | GET | `/v1/ssot` | Public | URL pointers + context link |
+| GET | `/v1/env-recipes` | Public | npm pins, package.json recipes, attach map |
 | POST | `/v1/chat` | API key or Grudge JWT | General chat |
 | POST | `/v1/agents/:role/chat` | API key or Grudge JWT | Role-specialized chat |
 | POST | `/v1/ui/chat` | API key or Grudge JWT | **UI/UX Director** alias (`role=ui`) |
