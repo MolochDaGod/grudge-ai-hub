@@ -1,0 +1,49 @@
+# Dual-worker Legion deploy — both MUST ship together.
+# Secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+name: Deploy Legion (both workers)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'index.js'
+      - 'lib/**'
+      - 'wrangler.toml'
+      - 'wrangler.domain.toml'
+      - 'package.json'
+      - '.github/workflows/deploy-legion.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Deploy path worker (grudge-legion-ai)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+      - name: Deploy domain worker (grudge-ai-hub)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config wrangler.domain.toml
+      - name: Smoke
+        run: |
+          sleep 8
+          set -e
+          H=$(curl -fsS https://ai.grudge-studio.com/health)
+          echo "$H"
+          echo "$H" | grep -q '"version":"1.6' || { echo 'health version missing'; exit 1; }
+          curl -fsS https://ai.grudge-studio.com/v1/env-recipes | grep -q grudge-play
+          curl -fsS https://ai.grudge-studio.com/v1/play-contract | grep -q Bip001
+          echo 'Legion dual-worker smoke ok'
