@@ -2,7 +2,11 @@
 
 **Canonical brain:** `https://ai.grudge-studio.com`  
 **Version:** 1.6.11  
+<<<<<<< Updated upstream
 **Context pack:** `GET /v1/context` · [AI_CONTEXT_SSOT.md](./AI_CONTEXT_SSOT.md) · [DEPLOY_HARDENING.md](./DEPLOY_HARDENING.md) · [WIRING.md](./WIRING.md)
+=======
+**Context pack:** `GET /v1/context` · [AI_CONTEXT_SSOT.md](./AI_CONTEXT_SSOT.md) · [DEPLOY_HARDENING.md](./DEPLOY_HARDENING.md)
+>>>>>>> Stashed changes
 
 This doc is the **attach SSOT for clients** (Forge, Puter toolkit, Open, Coder/GRD).  
 Forge-side detail: `Grudge-Studio-Forge/docs/AI_FLEET_ATTACH_SSOT.md`.
@@ -151,3 +155,22 @@ See Forge `docs/ACCOUNT_PUTER_ENGINE_SSOT.md`.
 - [ ] Dual-worker deploy of 1.6.11 (`index.js` `/v1/env-recipes` route)  
 - [ ] free-ai `GRUDGE_AI_KEY` for guests  
 - [ ] Agent jobs invoke Legion roles  
+
+
+---
+
+## Env recipes + wiring
+
+Machine: `GET https://ai.grudge-studio.com/v1/env-recipes`  
+Human: [WIRING.md](./WIRING.md)
+
+| Client | Recipe to consume | Role |
+|--------|-------------------|------|
+| Forge SPA / free-ai | `grudge-forge-r3f` | `forge` |
+| Warlords / kits / mixer | `grudge-play` | `director` + `animator` |
+| Coder GRUDAIDE default | `grudge-play` | `coder` |
+| Vibe proto only | `grudge-vibe-mp` | `vibe3d` — do not leak pins |
+
+Browser Legion cannot `npm install` (`nodeRunner: false`). Write recipe → Puter `/grudge-studio/<slug>` or local agent.
+
+Attach snippet lives in WIRING.md. Do not fork host maps in Forge / Puter / Coder.
