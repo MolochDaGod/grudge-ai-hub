@@ -1,7 +1,7 @@
 # Legion attach map — fleet consumers
 
 **Canonical brain:** `https://ai.grudge-studio.com`  
-**Version:** 1.6.11  
+**Version:** 1.6.13  
 **Context pack:** `GET /v1/context` · [AI_CONTEXT_SSOT.md](./AI_CONTEXT_SSOT.md) · [DEPLOY_HARDENING.md](./DEPLOY_HARDENING.md) · [WIRING.md](./WIRING.md)
 
 This doc is the **attach SSOT for clients** (Forge, Puter toolkit, Open, Coder/GRD).  
@@ -148,7 +148,8 @@ See Forge `docs/ACCOUNT_PUTER_ENGINE_SSOT.md`.
 - [x] free-ai + puter `GROQ_API_KEY`  
 - [x] `POLY_PIZZA_API_KEY` on Legion / free-ai / puter (edge only)  
 - [x] env_recipes + WIRING.md 1.6.11  
-- [ ] Dual-worker deploy of 1.6.11 (`index.js` `/v1/env-recipes` route)  
+- [x] Play contract 1.6.13 (Bip001 + Toon RTS + Grudge UUID) + dual-worker GHA  
+- [ ] Dual-worker deploy of 1.6.13 (`npm run deploy` or Actions → Deploy Legion)  
 - [ ] free-ai `GRUDGE_AI_KEY` for guests  
 - [ ] Agent jobs invoke Legion roles  
 
