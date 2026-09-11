@@ -2,7 +2,7 @@
 
 **Canonical brain:** `https://ai.grudge-studio.com`  
 **Version:** 1.6.13  
-**Context pack:** `GET /v1/context` · [AI_CONTEXT_SSOT.md](./AI_CONTEXT_SSOT.md) · [DEPLOY_HARDENING.md](./DEPLOY_HARDENING.md) · [WIRING.md](./WIRING.md)
+**Context pack:** `GET /v1/context` · [AI_CONTEXT_SSOT.md](./AI_CONTEXT_SSOT.md) · [DEPLOY_HARDENING.md](./DEPLOY_HARDENING.md)
 
 This doc is the **attach SSOT for clients** (Forge, Puter toolkit, Open, Coder/GRD).  
 Forge-side detail: `Grudge-Studio-Forge/docs/AI_FLEET_ATTACH_SSOT.md`.
@@ -22,7 +22,8 @@ Forge-side detail: `Grudge-Studio-Forge/docs/AI_FLEET_ATTACH_SSOT.md`.
 
 ## Agent skills (sub-agents)
 
-Public catalog: `GET https://ai.grudge-studio.com/v1/skills`
+Public catalog: `GET https://ai.grudge-studio.com/v1/skills`  
+Game attach: `GET https://ai.grudge-studio.com/v1/games`
 
 | Role | Use from Forge / fleet |
 |------|----------------|
@@ -52,34 +53,18 @@ Content-Type: application/json
 
 ---
 
-## Env recipes + wiring
-
-Machine: `GET https://ai.grudge-studio.com/v1/env-recipes` (also on `/v1/context.env_recipes`)  
-Human: [WIRING.md](./WIRING.md)
-
-| Client | Recipe to consume | Role |
-|--------|-------------------|------|
-| Forge SPA / free-ai | `grudge-forge-r3f` | `forge` |
-| Warlords / kits / mixer | `grudge-play` | `director` + `animator` |
-| Coder GRUDAIDE default | `grudge-play` | `coder` |
-| Vibe proto only | `grudge-vibe-mp` | `vibe3d` — do not leak pins |
-
-Browser Legion cannot `npm install` (`nodeRunner: false`). Write recipe → Puter `/grudge-studio/<slug>` or local agent.
-
-Attach snippet lives in WIRING.md. Do not fork host maps in Forge / Puter / Coder.
-
----
-
 ## Cloudflare AI on Legion only
 
 | Binding / product | Status | Notes |
 |-------------------|--------|-------|
 | `env.AI` Workers AI | Live | Strong + fast cascade |
-| Gemini BYOK | Live | `GEMINI_API_KEY` |
-| Groq | Code ready | Set `GROQ_API_KEY` on **both** workers |
-| Embeddings `/v1/embed` | Live | For future RAG |
+| Gemini BYOK | Live | default cheap chat |
+| Groq | Live | `GROQ_API_KEY` on both workers |
+| Puter Fable 5.1 / Astra 6 | Opt-in | `X-Puter-Token` User-Pays; never fleet key |
+| ElevenLabs TTS | Light | `POST /v1/audio/tts` 280 chars; bake SFX via danger-ai → R2 |
+| Cohere | **Removed** | Do not restore |
+| Embeddings `/v1/embed` | Live | Workers AI BGE (not Cohere) |
 | Queue `grudge-ai-events` | Bound | Wire consumers for long jobs |
-| Vectorize | Not yet | Optional knowledge packs |
 
 **Do not** enable Workers AI on Forge free-ai as a second brain — attach via Legion.
 
@@ -106,7 +91,8 @@ Smoke:
 
 ```bash
 curl -s https://ai.grudge-studio.com/health
-# expect: version 1.6.11, env_recipes on /v1/context, /v1/env-recipes lists grudge-play
+# expect: version 1.5.x, gemini_byok configured, workers_ai available
+# after Groq: "groq":"configured"
 ```
 
 ---
@@ -147,27 +133,5 @@ See Forge `docs/ACCOUNT_PUTER_ENGINE_SSOT.md`.
 - [x] Legion `GROQ_API_KEY` (both workers)  
 - [x] free-ai + puter `GROQ_API_KEY`  
 - [x] `POLY_PIZZA_API_KEY` on Legion / free-ai / puter (edge only)  
-- [x] env_recipes + WIRING.md 1.6.11  
-- [x] Play contract 1.6.13 (Bip001 + Toon RTS + Grudge UUID) + dual-worker GHA  
-- [ ] Dual-worker deploy of 1.6.13 (`npm run deploy` or Actions → Deploy Legion)  
 - [ ] free-ai `GRUDGE_AI_KEY` for guests  
 - [ ] Agent jobs invoke Legion roles  
-
-
----
-
-## Env recipes + wiring
-
-Machine: `GET https://ai.grudge-studio.com/v1/env-recipes`  
-Human: [WIRING.md](./WIRING.md)
-
-| Client | Recipe to consume | Role |
-|--------|-------------------|------|
-| Forge SPA / free-ai | `grudge-forge-r3f` | `forge` |
-| Warlords / kits / mixer | `grudge-play` | `director` + `animator` |
-| Coder GRUDAIDE default | `grudge-play` | `coder` |
-| Vibe proto only | `grudge-vibe-mp` | `vibe3d` — do not leak pins |
-
-Browser Legion cannot `npm install` (`nodeRunner: false`). Write recipe → Puter `/grudge-studio/<slug>` or local agent.
-
-Attach snippet lives in WIRING.md. Do not fork host maps in Forge / Puter / Coder.

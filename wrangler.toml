@@ -36,21 +36,23 @@ binding = "KV"
 id      = "486553dfacdc40b394e630b1cdfa97d6"
 
 # Secrets (wrangler secret put …) — also run scripts/set-gemini-secret.ps1
-# OBSERVATORY_KEY, GEMINI_API_KEY, GROQ_API_KEY, COHERE_API_KEY, VPS_INTERNAL_KEY, WORKERS_AI_USER_TOKEN
+# OBSERVATORY_KEY, GEMINI_API_KEY, GROQ_API_KEY, PUTER_AUTH_TOKEN (admin deployer only),
+# ELEVEN_LABS_API (light TTS), VPS_INTERNAL_KEY, WORKERS_AI_USER_TOKEN
+# Cohere removed — do not put COHERE_API_KEY
 # Never put secrets in [vars] or git.
 
 [vars]
 ENVIRONMENT              = "production"
 DEFAULT_AI_MODEL         = "google/gemini-3.5-flash"
-COHERE_BASE_URL          = "https://api.grudge-s010rs.cloud.cohere.com"
-COHERE_DEPLOYMENT_ID     = "grudge-s010rs"
-COHERE_CHAT_MODEL        = "command-r"
-COHERE_EMBED_MODEL       = "embed-english-v3.0"
+PUTER_CHAT_MODEL         = "claude-fable-5-1"
+PUTER_STRONG_MODEL       = "gpt-6-astra"
+PUTER_RPM                = "8"
+PUTER_DAILY              = "40"
 # Free Workers AI cascade (binding-first — best CF usage)
 STRONG_AI_MODEL          = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 FALLBACK_AI_MODEL        = "@cf/meta/llama-3.1-8b-instruct-fast"
 CLOUDFLARE_ACCOUNT_ID    = "ee475864561b02d4588180b8b9acf694"
-VPS_ENABLED              = "true"
+VPS_ENABLED              = "false"
 VPS_AI_AGENT_URL         = "http://74.208.174.62:11435"
 RATE_LIMIT_RPM           = "60"
 RATE_LIMIT_RPM_ADMIN     = "300"

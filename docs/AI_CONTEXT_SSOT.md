@@ -3,7 +3,7 @@
 **Canonical pack (machine):** `GET https://ai.grudge-studio.com/v1/context`  
 **Pointers:** `GET https://ai.grudge-studio.com/v1/ssot`  
 **Agent roles:** `GET https://ai.grudge-studio.com/v1/skills`  
-**Version:** 1.6.11 · code `lib/fleetContext.js` + `lib/agentSkills.js` + `lib/envRecipes.js`
+**Version:** 1.6.9 · code `lib/fleetContext.js` + `lib/agentSkills.js`
 
 This is how **Legion and fleet agents** learn Grudge Studio topology, **info.grudge-studio.com**, deployable AI systems, **agentic / GRD Grudachain**, and deploy law — without inventing parallel hosts.
 
@@ -11,8 +11,9 @@ This is how **Legion and fleet agents** learn Grudge Studio topology, **info.gru
 
 ## Load order (agents)
 
-1. `GET /v1/context` — full pack (one_truth, brands, ai_deployable, agentic, deploy_hardening, grd, info)
+1. `GET /v1/context` — full pack (one_truth, brands, games, ai_deployable, agentic, deploy_hardening, grd, info)
 2. `GET /v1/ssot` — URL pointers only
+2a. `GET /v1/games` — live game hosts + Legion attach (same-origin `/api/ai` vs absolute)
 3. Human docs: `https://info.grudge-studio.com/docs` · codex `…/CANONICAL_CODEX.md`
 4. Machine fleet: `https://objectstore.grudge-studio.com/api/v1/fleet-canonical.json`
 5. Pick **brand host** — never merge Open / GRUDOX / Forge / Warlords into one SPA
@@ -93,9 +94,7 @@ npm run db:skills       # re-seed D1 roles after skill updates
 
 ## Related
 
-- [FLEET_ATTACH.md](./FLEET_ATTACH.md) — client attach map
-- [WIRING.md](./WIRING.md) — how Forge / Puter / Coder / games connect
-- `GET /v1/env-recipes` — play vs forge-r3f vs vibe-mp pins  
+- [FLEET_ATTACH.md](./FLEET_ATTACH.md) — client attach map  
 - Forge `docs/AI_FLEET_ATTACH_SSOT.md`  
 - Puter `docs/PUTER_BRIDGE_DEPLOY.md`  
 - Skill `grudge-coder` · umbrella `grudge-studio`  
