@@ -1,6 +1,7 @@
 # Deploy hardening — Legion + fleet AI surfaces
 
 **Version:** 1.6.11 · machine checklist also on `GET /v1/context` → `deploy_hardening`
+**Version:** 1.6.12 · machine checklist also on `GET /v1/context` → `deploy_hardening`
 
 ## Principles
 
@@ -64,6 +65,8 @@ npm run deploy:bridge
 | https://ai.grudge-studio.com/puter-space | 200 HTML (account cloud UI) |
 | https://ai.grudge-studio.com/v1/skills | skill count ≥ 20 |
 | https://ai.grudge-studio.com/v1/ssot | context + puter_space pointers |
+| https://ai.grudge-studio.com/v1/games | game attach catalog ≥ 8 |
+| https://open.grudge-studio.com/api/ai/health | Open rewrite → Legion |
 | https://forge.grudge-studio.com/api/free-ai/status | legionBinding true |
 | https://puter.grudge-studio.com/api/health | ok |
 | https://info.grudge-studio.com/docs | 200 |
@@ -75,8 +78,10 @@ npm run deploy:bridge
 | Secret | Workers | Effect if missing |
 |--------|---------|-------------------|
 | `GROQ_API_KEY` | both Legion | mid waterfall skipped |
+| `ELEVEN_LABS_API` | both Legion | light TTS 503 |
 | `GRUDGE_AI_KEY` | free-ai | guest Legion without user JWT fails |
 | `JWT_SECRET` | both Legion | only API keys / admin paths |
+| `COHERE_API_KEY` | — | **do not set** (retired) |
 
 ## Anti-patterns
 
@@ -85,6 +90,9 @@ npm run deploy:bridge
 - Treating Coder AI Hub as Legion  
 - Desktop-only Puter upload  
 - Merging brand SPAs “for convenience”  
+- Putting `COHERE_API_KEY` back on Legion  
+- Fleet `GRUDGE_AI_KEY` calling Puter/ElevenLabs without `X-Puter-Token`  
+- `VITE_ELEVEN_*` on Vercel / puter.site  
 
 ## Report template
 

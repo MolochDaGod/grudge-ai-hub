@@ -1,8 +1,8 @@
 {
   "name": "grudge-legion-ai",
-  "version": "1.6.11",
+  "version": "1.6.13",
   "private": true,
-  "description": "GRUDA Legion AI Hub — Cloudflare Worker gateway for Grudge Studio (Workers AI + Gemini BYOK + Groq + agent skills + fleet context)",
+  "description": "GRUDA Legion AI Hub — Gemini/Groq/Workers waterfall + Puter Fable/Astra opt-in + light ElevenLabs TTS",
   "scripts": {
     "deploy": "wrangler deploy && wrangler deploy --config wrangler.domain.toml",
     "deploy:api": "wrangler deploy",
@@ -10,7 +10,10 @@
     "deploy:hard": "npm run deploy && npm run db:skills:all && npm run smoke",
     "db:skills": "wrangler d1 execute grudge-ai-hub --remote --file=migrations/004_puter_fleet_skills.sql",
     "db:skills:context": "wrangler d1 execute grudge-ai-hub --remote --file=migrations/005_context_agentic_skills.sql",
-    "db:skills:all": "npm run db:skills && npm run db:skills:context",
+    "db:skills:director": "wrangler d1 execute grudge-ai-hub --remote --file=migrations/006_threejs_director.sql",
+    "db:icons": "wrangler d1 execute grudge-ai-hub --remote --file=migrations/007_icon_reviews.sql",
+    "db:skills:ssot": "wrangler d1 execute grudge-ai-hub --remote --file=migrations/008_ssot_overlay.sql",
+    "db:skills:all": "npm run db:skills && npm run db:skills:context && npm run db:skills:director && npm run db:icons && npm run db:skills:ssot",
     "smoke": "node scripts/smoke-deploy.mjs",
     "tail": "wrangler tail grudge-legion-ai",
     "tail:domain": "wrangler tail grudge-ai-hub"

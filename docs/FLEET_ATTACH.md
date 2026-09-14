@@ -3,6 +3,8 @@
 **Canonical brain:** `https://ai.grudge-studio.com`  
 **Version:** 1.6.11  
 **Context pack:** `GET /v1/context` · [AI_CONTEXT_SSOT.md](./AI_CONTEXT_SSOT.md) · [DEPLOY_HARDENING.md](./DEPLOY_HARDENING.md) · [WIRING.md](./WIRING.md)
+**Version:** 1.6.13  
+**Context pack:** `GET /v1/context` · [AI_CONTEXT_SSOT.md](./AI_CONTEXT_SSOT.md) · [DEPLOY_HARDENING.md](./DEPLOY_HARDENING.md)
 
 This doc is the **attach SSOT for clients** (Forge, Puter toolkit, Open, Coder/GRD).  
 Forge-side detail: `Grudge-Studio-Forge/docs/AI_FLEET_ATTACH_SSOT.md`.
@@ -22,7 +24,8 @@ Forge-side detail: `Grudge-Studio-Forge/docs/AI_FLEET_ATTACH_SSOT.md`.
 
 ## Agent skills (sub-agents)
 
-Public catalog: `GET https://ai.grudge-studio.com/v1/skills`
+Public catalog: `GET https://ai.grudge-studio.com/v1/skills`  
+Game attach: `GET https://ai.grudge-studio.com/v1/games`
 
 | Role | Use from Forge / fleet |
 |------|----------------|
@@ -75,11 +78,13 @@ Attach snippet lives in WIRING.md. Do not fork host maps in Forge / Puter / Code
 | Binding / product | Status | Notes |
 |-------------------|--------|-------|
 | `env.AI` Workers AI | Live | Strong + fast cascade |
-| Gemini BYOK | Live | `GEMINI_API_KEY` |
-| Groq | Code ready | Set `GROQ_API_KEY` on **both** workers |
-| Embeddings `/v1/embed` | Live | For future RAG |
+| Gemini BYOK | Live | default cheap chat |
+| Groq | Live | `GROQ_API_KEY` on both workers |
+| Puter Fable 5.1 / Astra 6 | Opt-in | `X-Puter-Token` User-Pays; never fleet key |
+| ElevenLabs TTS | Light | `POST /v1/audio/tts` 280 chars; bake SFX via danger-ai → R2 |
+| Cohere | **Removed** | Do not restore |
+| Embeddings `/v1/embed` | Live | Workers AI BGE (not Cohere) |
 | Queue `grudge-ai-events` | Bound | Wire consumers for long jobs |
-| Vectorize | Not yet | Optional knowledge packs |
 
 **Do not** enable Workers AI on Forge free-ai as a second brain — attach via Legion.
 

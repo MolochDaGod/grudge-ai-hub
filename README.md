@@ -4,6 +4,7 @@ Centralized AI gateway for all Grudge Studio apps.
 
 **Canonical public URL (ONE TRUTH):** `https://ai.grudge-studio.com`  
 **Version:** 1.6.11 (env recipes + fleet wiring in `/v1/context` + `/v1/env-recipes`)
+**Version:** 1.6.13 (poker in /v1/games · Forge forwards X-Puter-Token · Coder Fable/Astra SSOT)
 
 **Attach map:** [`docs/FLEET_ATTACH.md`](./docs/FLEET_ATTACH.md)  
 **AI context (Studio + info + agentic + GRD):** [`docs/AI_CONTEXT_SSOT.md`](./docs/AI_CONTEXT_SSOT.md)  

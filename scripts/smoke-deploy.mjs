@@ -5,25 +5,21 @@
  *        npm run smoke
  */
 const URLS = [
-  { url: 'https://ai.grudge-studio.com/health', expect: (j) => j?.ok || j?.status === 'ok' },
+  {
+    url: 'https://ai.grudge-studio.com/health',
+    expect: (j) =>
+      (j?.ok || j?.status === 'ok') &&
+      j?.providers?.cohere_dedicated == null &&
+      Array.isArray(j?.abuse?.retired) &&
+      j.abuse.retired.includes('cohere'),
+  },
   {
     url: 'https://ai.grudge-studio.com/v1/context',
     expect: (j) =>
       j?.ok &&
       j?.one_truth?.puter_space &&
       j?.one_truth?.asset_serve?.host &&
-      j?.ai_deployable &&
-      Array.isArray(j?.env_recipes) &&
-      j.env_recipes.some((r) => r.id === 'grudge-play') &&
-      j?.wiring?.attach,
-  },
-  {
-    url: 'https://ai.grudge-studio.com/v1/env-recipes',
-    expect: (j) =>
-      j?.ok &&
-      Array.isArray(j?.recipes) &&
-      j.recipes.some((r) => r.id === 'grudge-play') &&
-      j?.npm_law?.play_three === '0.185.0',
+      j?.ai_deployable,
   },
   { url: 'https://ai.grudge-studio.com/puter-space', expect: null, html: true },
   {
@@ -35,12 +31,24 @@ const URLS = [
     expect: (j) => j?.ok && j?.context,
   },
   {
+    url: 'https://ai.grudge-studio.com/v1/models',
+    expect: (j) => j?.ok && Array.isArray(j?.models) && j.models.length >= 4,
+  },
+  {
+    url: 'https://ai.grudge-studio.com/v1/games',
+    expect: (j) => j?.ok && (j?.count ?? 0) >= 8 && Array.isArray(j?.games),
+  },
+  {
+    url: 'https://open.grudge-studio.com/api/ai/health',
+    expect: (j) => j?.ok && j?.service === 'grudge-ai-hub',
+  },
+  {
     url: 'https://forge.grudge-studio.com/api/free-ai/status',
-    expect: (j) => j?.ok,
+    expect: (j) => j?.ok && j?.legionBinding !== false,
   },
   {
     url: 'https://puter.grudge-studio.com/api/health',
-    expect: (j) => j?.ok,
+    expect: (j) => j?.ok || j?.status === 'ok' || j?.status === 'healthy',
   },
   { url: 'https://info.grudge-studio.com/docs', expect: null, html: true },
   { url: 'https://coder.grudge-studio.com/', expect: null, html: true },

@@ -19,6 +19,7 @@
  *   POST   /v1/icons/review/stream  NDJSON batch stream (auth, max 8)
  *   POST   /v1/image/generate       Image generation (auth)
  *   POST   /v1/embed                Text embeddings (auth)
+ *   POST   /v1/audio/tts            Light ElevenLabs bark (auth, capped)
  *   GET    /v1/admin/usage          Usage analytics (admin)
  *   GET    /v1/admin/health         Provider diagnostics (admin)
  *   GET    /v1/admin/config         Agent role config (admin)
@@ -36,6 +37,25 @@ import {
   runWorkersAi,
 } from './lib/aiRunner.js';
 import {
+  isPuterDeployerConfigured,
+  isPuterModel,
+  isRetiredCohereModel,
+  runPuterChat,
+  getPuterDeployerToken,
+  clipMessages,
+  PUTER_FABLE,
+  PUTER_ASTRA,
+  PUTER_MAX_MESSAGES,
+  PUTER_MAX_CHARS,
+} from './lib/puterAi.js';
+import {
+  isElevenConfigured,
+  runElevenTts,
+  TTS_MAX_CHARS,
+  TTS_RPM,
+  TTS_DAILY,
+} from './lib/elevenLabsLight.js';
+import {
   HUB_VERSION,
   AGENT_SKILLS,
   ensureAgentList,
@@ -47,6 +67,7 @@ import {
   buildContextPack,
   ONE_TRUTH,
   AI_DEPLOYABLE,
+  GAME_DEPLOYMENTS,
   DEPLOY_HARDENING,
   CONTEXT_VERSION,
   listEnvRecipes,
@@ -118,6 +139,8 @@ export default {
           context_version: CONTEXT_VERSION,
           ...listEnvRecipes(),
         }), origin), t0);
+      if ((url.pathname === '/v1/games' || url.pathname === '/v1/deployments') && method === 'GET') {
+        return finish(obs, request, corsResponse(handleGameDeployments(), origin), t0);
       }
       if (url.pathname === '/v1/icons/reviews' && method === 'GET') {
         return finish(obs, request, corsResponse(await handleIconReviewsList(url, env), origin), t0);
@@ -203,7 +226,7 @@ export default {
         ? parseInt(env.RATE_LIMIT_RPM_ADMIN || '300', 10)
         : (auth.rpmLimit || parseInt(env.RATE_LIMIT_RPM || '60', 10));
 
-      const limited = await checkRateLimit(env.KV, rateKey, rpm);
+      const limited = await checkRateLimit(env.KV, rateKey, rpm, { failClosed: false });
       if (limited) {
         await logRequest(env, { requestId, apiKeyId: auth.keyId, role: null, provider: 'none', model: null, status: 'rate-limited', latencyMs: 0 });
         const res = corsResponse(json({ error: 'Rate limit exceeded', retry_after: 60 }, 429), origin);
@@ -214,8 +237,8 @@ export default {
 
       // ── Authenticated routes ───────────────────────────────────
 
-      // POST /v1/chat
-      if (url.pathname === '/v1/chat' && method === 'POST') {
+      // POST /v1/chat  (+ /v1/agent alias used by poker Worker)
+      if ((url.pathname === '/v1/chat' || url.pathname === '/v1/agent') && method === 'POST') {
         return finish(obs, request, corsResponse(await handleChat(request, env, auth, requestId, 'general'), origin), t0);
       }
 
@@ -255,6 +278,11 @@ export default {
       // POST /v1/embed
       if (url.pathname === '/v1/embed' && method === 'POST') {
         return finish(obs, request, corsResponse(await handleEmbed(request, env, auth, requestId), origin), t0);
+      }
+
+      // POST /v1/audio/tts — light ElevenLabs (JWT / member, not fleet-key spend)
+      if (url.pathname === '/v1/audio/tts' && method === 'POST') {
+        return finish(obs, request, corsResponse(await handleLightTts(request, env, auth, requestId), origin), t0);
       }
 
       // ── Admin routes ───────────────────────────────────────────
@@ -324,6 +352,19 @@ async function authenticate(request, env) {
 
   if (!apiKey) {
     return { error: 'Missing Authorization header (Bearer <api-key|grudge_jwt>)' };
+  }
+
+  // 0) Server fleet key (Forge free-ai / same-origin game rewrites)
+  const fleetKey = (env.GRUDGE_AI_KEY || env.LEGION_HUB_API_KEY || '').trim();
+  if (fleetKey && apiKey === fleetKey) {
+    return {
+      keyId: 'grudge-ai-key',
+      name: 'fleet',
+      scope: 'member',
+      tier: 'fleet',
+      rpmLimit: 120,
+      authType: 'grudge_ai_key',
+    };
   }
 
   // 1) Fleet Grudge ID JWT (same secret as Railway / id gateway) — member chat
@@ -418,21 +459,39 @@ async function sha256(text) {
 //  Rate Limiting (KV-based sliding window)
 // ════════════════════════════════════════════════════════════════
 
-async function checkRateLimit(kv, key, maxRpm) {
+async function checkRateLimit(kv, key, maxRpm, { failClosed = false } = {}) {
   try {
+    if (!kv) return failClosed;
     const now = Math.floor(Date.now() / 1000);
     const windowKey = `${key}:${Math.floor(now / 60)}`;
     const count = parseInt(await kv.get(windowKey) || '0', 10);
 
     if (count >= maxRpm) return true;
 
-    // Increment (fire and forget, async — doesn't block response)
     kv.put(windowKey, String(count + 1), { expirationTtl: 120 }).catch(() => {});
     return false;
   } catch {
-    // KV unavailable — fail open
-    return false;
+    return failClosed;
   }
+}
+
+/** Daily counter. Returns true when over cap. Paid paths fail closed if KV down. */
+async function checkDailyCap(kv, key, max, { failClosed = true } = {}) {
+  try {
+    if (!kv) return failClosed;
+    const day = new Date().toISOString().slice(0, 10);
+    const windowKey = `${key}:${day}`;
+    const count = parseInt(await kv.get(windowKey) || '0', 10);
+    if (count >= max) return true;
+    kv.put(windowKey, String(count + 1), { expirationTtl: 172800 }).catch(() => {});
+    return false;
+  } catch {
+    return failClosed;
+  }
+}
+
+function isFleetServiceKey(auth) {
+  return auth?.authType === 'grudge_ai_key' || auth?.tier === 'fleet';
 }
 
 
@@ -474,20 +533,32 @@ async function handleHealth(env) {
       workers_ai_strong: env.STRONG_AI_MODEL || STRONG_CF_MODEL,
       workers_ai_fast: env.FALLBACK_AI_MODEL || DEFAULT_CF_MODEL,
       groq: isGroqConfigured(env) ? 'configured' : 'missing',
-      cohere_dedicated: env.COHERE_API_KEY ? 'configured' : 'missing',
-      cohere_base: env.COHERE_BASE_URL || 'https://api.grudge-s010rs.cloud.cohere.com',
+      puter: isPuterDeployerConfigured(env) ? 'deployer-token' : 'user-pays-header',
+      puter_models: [PUTER_FABLE, PUTER_ASTRA],
+      elevenlabs: isElevenConfigured(env) ? 'configured' : 'missing',
       poly_pizza: env.POLY_PIZZA_API_KEY || env.POLY_PIZZA_API ? 'configured' : 'missing',
       vps_ai_agent: vpsStatus,
       grudge_jwt: env.JWT_SECRET ? 'configured' : 'optional',
       xai_grok: grok ? 'configured' : (ui ? 'ui_missing' : 'unknown'),
     },
     llm_waterfall: [
-      'cohere-dedicated (grudge-s010rs)',
-      'gemini-byok',
-      'groq',
+      geminiOk ? 'gemini-byok' : 'gemini-byok (missing key)',
+      isGroqConfigured(env) ? 'groq' : 'groq (missing key)',
       'workers-ai-binding (strong→fast)',
-      'workers-ai-rest',
+      env.WORKERS_AI_USER_TOKEN ? 'workers-ai-rest' : 'workers-ai-rest (optional token)',
+      'puter Fable 5.1 / Astra 6 opt-in (X-Puter-Token User-Pays)',
     ],
+    abuse: {
+      rpm_default: parseInt(env.RATE_LIMIT_RPM || '60', 10),
+      rpm_puter: parseInt(env.PUTER_RPM || '8', 10),
+      rpm_tts: TTS_RPM,
+      puter_daily: parseInt(env.PUTER_DAILY || '40', 10),
+      tts_daily: TTS_DAILY,
+      tts_max_chars: TTS_MAX_CHARS,
+      fleet_key_cannot_spend_puter_or_eleven: true,
+      kv_fail_closed_paid: true,
+      retired: ['cohere'],
+    },
     fleet: {
       identity: 'https://id.grudge-studio.com',
       gameData: 'https://grudge-api-production-0d46.up.railway.app',
@@ -525,7 +596,7 @@ async function handleHealth(env) {
       || (ui?.nodeRunner
         ? 'Local Node runner online'
         : 'Cloud API online (Workers + serverless Node)'),
-    skills: ui?.skills ?? null,
+    skills: Object.keys(AGENT_SKILLS).length,
     ui_health: ui
       ? {
           ok: !!ui.ok,
@@ -541,6 +612,7 @@ async function handleHealth(env) {
       '/api/health',
       '/v1/agents',
       '/v1/models',
+      '/v1/games',
       '/v1/ssot',
       '/v1/skills',
       '/v1/context',
@@ -597,6 +669,7 @@ function handleSsotPointers() {
     arena_ws: '/api/arena',
     room: 'https://voxgrudge-grudox-room-production.up.railway.app',
     vibe_pack: ONE_TRUTH.vibe_pack,
+    games: 'https://ai.grudge-studio.com/v1/games',
     rest: ONE_TRUTH.rest,
     assets: ONE_TRUTH.binaries,
     fleet_js: 'https://assets.grudge-studio.com/js/grudge-fleet.js',
@@ -644,6 +717,19 @@ Code SSOT:
 Deploy grudgewarlords.com: Vercel alias from GrudgeBuilder main (vercel.json).
 Do not invent Cannon-ES APIs on Rapier projects. Prefer fleet presets over ad-hoc ColliderDesc.`;
 
+function handleGameDeployments() {
+  return json({
+    ok: true,
+    version: HUB_VERSION,
+    context_version: CONTEXT_VERSION,
+    brain: 'https://ai.grudge-studio.com',
+    auth: 'Bearer Grudge JWT on chat; GET catalog is public. Prefer same-origin /api/ai when listed.',
+    player: 'Railway grudge-api-production-0d46 — never D1/Puter bag',
+    count: GAME_DEPLOYMENTS.length,
+    games: GAME_DEPLOYMENTS,
+  });
+}
+
 function handleRapierChecklist() {
   return json({
     ok: true,
@@ -686,18 +772,66 @@ async function handlePublicModels(env) {
     agents = body.agents || [];
   } catch { /* ignore */ }
 
+  const geminiId = env.DEFAULT_AI_MODEL || DEFAULT_GEMINI_MODEL || 'google/gemini-3.5-flash';
   const models = [
     {
-      id: env.DEFAULT_AI_MODEL || DEFAULT_GEMINI_MODEL || 'google/gemini-3.5-flash',
+      id: geminiId,
       provider: 'gemini',
       capability: 'chat',
       default: true,
+      configured: isGeminiByokConfigured(env),
     },
     {
       id: env.FALLBACK_AI_MODEL || DEFAULT_CF_MODEL || '@cf/meta/llama-3.1-8b-instruct-fast',
       provider: 'workers_ai',
       capability: 'chat',
       default: false,
+      configured: true,
+    },
+    {
+      id: env.STRONG_AI_MODEL || STRONG_CF_MODEL,
+      provider: 'workers_ai',
+      capability: 'chat',
+      default: false,
+      configured: true,
+    },
+    {
+      id: DEFAULT_GROQ_MODEL,
+      provider: 'groq',
+      capability: 'chat',
+      default: false,
+      configured: isGroqConfigured(env),
+      note: 'free-tier when GROQ_API_KEY set',
+    },
+    {
+      id: PUTER_FABLE,
+      provider: 'puter',
+      capability: 'chat',
+      default: false,
+      configured: true,
+      note: 'User-Pays X-Puter-Token. Not default fleet chat.',
+    },
+    {
+      id: PUTER_ASTRA,
+      provider: 'puter',
+      capability: 'chat',
+      default: false,
+      configured: true,
+      note: 'openai/gpt-6-astra via Puter. User-Pays.',
+    },
+    {
+      id: CF_MODELS.embed,
+      provider: 'workers_ai',
+      capability: 'embed',
+      default: false,
+      configured: true,
+    },
+    {
+      id: CF_MODELS.image,
+      provider: 'workers_ai',
+      capability: 'image',
+      default: false,
+      configured: true,
     },
   ];
 
@@ -705,39 +839,11 @@ async function handlePublicModels(env) {
     ok: true,
     service: 'grudge-ai-hub',
     version: HUB_VERSION,
-    models: [
-      ...models,
-      {
-        id: env.STRONG_AI_MODEL || STRONG_CF_MODEL,
-        provider: 'workers_ai',
-        capability: 'chat',
-        default: false,
-      },
-      {
-        id: DEFAULT_GROQ_MODEL,
-        provider: 'groq',
-        capability: 'chat',
-        default: false,
-        note: 'free-tier when GROQ_API_KEY set',
-      },
-      {
-        id: env.COHERE_CHAT_MODEL || 'command-r',
-        provider: 'cohere-dedicated',
-        capability: 'chat',
-        default: false,
-        note: 'grudge-s010rs  https://api.grudge-s010rs.cloud.cohere.com',
-      },
-      {
-        id: env.COHERE_EMBED_MODEL || 'embed-english-v3.0',
-        provider: 'cohere-dedicated',
-        capability: 'embed',
-        default: false,
-      },
-    ],
+    models,
     agents,
     auth: {
       chat: 'Bearer API key (D1 api_keys) or Grudge ID JWT when JWT_SECRET is set',
-      public: ['/v1/models', '/v1/agents', '/health', '/v1/ssot', '/v1/context', '/v1/skills'],
+      public: ['/v1/models', '/v1/agents', '/v1/games', '/health', '/v1/ssot', '/v1/context', '/v1/skills'],
     },
     endpoints: {
       health: 'GET /health',
@@ -745,6 +851,7 @@ async function handlePublicModels(env) {
       context: 'GET /v1/context',
       skills: 'GET /v1/skills',
       agents: 'GET /v1/agents',
+      games: 'GET /v1/games',
       chat: 'POST /v1/chat',
       agent_chat: 'POST /v1/agents/:role/chat',
       vibe3d: 'POST /v1/agents/vibe3d/chat',
@@ -755,6 +862,7 @@ async function handlePublicModels(env) {
       icon_review_stream: 'POST /v1/icons/review/stream NDJSON max 8',
       image: 'POST /v1/image/generate',
       embed: 'POST /v1/embed',
+      tts: 'POST /v1/audio/tts { text } — ElevenLabs light bark, max 280 chars',
     },
     vibe_pack: ONE_TRUTH.vibe_pack,
   });
@@ -798,6 +906,107 @@ async function handleListAgents(env) {
   }
 }
 
+async function handlePuterChat(request, env, auth, requestId, role, fullMessages, useModel, start) {
+  if (isFleetServiceKey(auth) && !request.headers.get('X-Puter-Token')) {
+    return json({
+      error: 'Puter Fable/Astra is User-Pays. Send X-Puter-Token or sign in with Puter. Fleet GRUDGE_AI_KEY cannot spend deployer Puter credits.',
+      provider: 'puter',
+      request_id: requestId,
+    }, 403);
+  }
+  const userToken = (request.headers.get('X-Puter-Token') || '').trim();
+  const token = userToken || (auth.scope === 'admin' ? getPuterDeployerToken(env) : null);
+  if (!token) {
+    return json({
+      error: 'Puter not linked. Browser: puter.auth.signIn then X-Puter-Token. Admin deployer token is optional.',
+      provider: 'puter',
+      request_id: requestId,
+    }, 401);
+  }
+  const rpm = parseInt(env.PUTER_RPM || '8', 10);
+  const daily = parseInt(env.PUTER_DAILY || '40', 10);
+  const id = auth.keyId || 'anon';
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  if (await checkRateLimit(env.KV, `rl:puter:${id}`, rpm, { failClosed: true })
+    || await checkRateLimit(env.KV, `rl:puter:ip:${ip}`, rpm, { failClosed: true })) {
+    return json({ error: 'Puter rate limit (8/min). Use Gemini/Groq for bulk chat.', retry_after: 60 }, 429);
+  }
+  if (await checkDailyCap(env.KV, `day:puter:${id}`, daily, { failClosed: true })) {
+    return json({ error: 'Puter daily cap reached. Fable/Astra stay opt-in.', retry_after: 86400 }, 429);
+  }
+  try {
+    const billed = userToken ? 'user-pays' : 'deployer';
+    const aiRun = await runPuterChat(token, fullMessages, useModel);
+    const latency = Date.now() - start;
+    await logRequest(env, {
+      requestId, apiKeyId: auth.keyId, role, provider: 'puter',
+      model: aiRun.model, status: 'ok', latencyMs: latency,
+    });
+    return json({
+      response: aiRun.text,
+      provider: 'puter',
+      billing: billed,
+      model: aiRun.model,
+      role,
+      fallback: false,
+      request_id: requestId,
+    });
+  } catch (err) {
+    await logRequest(env, {
+      requestId, apiKeyId: auth.keyId, role, provider: 'puter',
+      model: useModel, status: 'error', latencyMs: Date.now() - start, error: err.message,
+    });
+    return json({ error: err.message || 'Puter chat failed', provider: 'puter', request_id: requestId }, 502);
+  }
+}
+
+async function handleLightTts(request, env, auth, requestId) {
+  if (!isElevenConfigured(env)) {
+    return json({ error: 'ElevenLabs not configured on hub. Bake SFX via danger-ai Worker.', request_id: requestId }, 503);
+  }
+  if (isFleetServiceKey(auth)) {
+    return json({
+      error: 'Fleet GRUDGE_AI_KEY cannot spend ElevenLabs. Use member JWT for a short bark, or danger-ai bake → R2.',
+      request_id: requestId,
+    }, 403);
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'Invalid JSON' }, 400);
+  }
+  const text = String(body.text || body.message || '').trim();
+  if (!text) return json({ error: '"text" required' }, 400);
+  if (text.length > TTS_MAX_CHARS) {
+    return json({ error: `TTS max ${TTS_MAX_CHARS} chars (light bark only)` }, 413);
+  }
+  const id = auth.keyId || 'anon';
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  if (await checkRateLimit(env.KV, `rl:tts:${id}`, TTS_RPM, { failClosed: true })
+    || await checkRateLimit(env.KV, `rl:tts:ip:${ip}`, TTS_RPM, { failClosed: true })) {
+    return json({ error: 'TTS rate limit (4/min)', retry_after: 60 }, 429);
+  }
+  if (await checkDailyCap(env.KV, `day:tts:${id}`, TTS_DAILY, { failClosed: true })) {
+    return json({ error: 'TTS daily cap (20). Cache or bake to R2.', retry_after: 86400 }, 429);
+  }
+  try {
+    const out = await runElevenTts(env, { text, voiceId: body.voice_id || body.voiceId });
+    await logRequest(env, {
+      requestId, apiKeyId: auth.keyId, role: 'tts', provider: 'elevenlabs',
+      model: out.model, status: 'ok', latencyMs: 0,
+    });
+    return json({
+      ok: true,
+      ...out,
+      request_id: requestId,
+      note: 'Light bark. Production SFX/VO: danger-ai → R2, never VITE_ELEVEN.',
+    });
+  } catch (err) {
+    return json({ error: err.message || 'tts failed', request_id: requestId }, 502);
+  }
+}
+
 /** POST /v1/chat and POST /v1/agents/:role/chat */
 async function handleChat(request, env, auth, requestId, role) {
   const start = Date.now();
@@ -819,6 +1028,7 @@ async function handleChat(request, env, auth, requestId, role) {
   } else {
     return json({ error: 'Provide "message" (string) or "messages" (array)' }, 400);
   }
+  chatMessages = clipMessages(chatMessages);
 
   // Get role config from D1
   let roleConfig = null;
@@ -833,9 +1043,25 @@ async function handleChat(request, env, auth, requestId, role) {
   if (!roleConfig) {
     // Inline fallback from agentSkills SSOT (D1 seed lag / cold deploy)
     roleConfig = getRoleConfig(role);
+  } else {
+    const ssot = getRoleConfig(role);
+    if (AGENT_SKILLS[ssot.role] || AGENT_SKILLS[role]) {
+      roleConfig = {
+        ...roleConfig,
+        system_prompt: ssot.system_prompt || roleConfig.system_prompt,
+        model: ssot.model || roleConfig.model,
+        temperature: ssot.temperature ?? roleConfig.temperature,
+        max_tokens: ssot.max_tokens ?? roleConfig.max_tokens,
+        escalate_to_vps: ssot.escalate_to_vps ?? 0,
+      };
+    }
   }
 
-  const useModel = model || roleConfig.model;
+  let useModel = model || roleConfig.model;
+  if (isRetiredCohereModel(useModel) || body.prefer === 'cohere') {
+    useModel = env.DEFAULT_AI_MODEL || DEFAULT_GEMINI_MODEL;
+    body.prefer = undefined;
+  }
   const useTemp = temperature ?? roleConfig.temperature;
   const useMaxTokens = maxOutputTokens ?? max_tokens ?? roleConfig.max_tokens;
 
@@ -844,6 +1070,13 @@ async function handleChat(request, env, auth, requestId, role) {
     { role: 'system', content: roleConfig.system_prompt },
     ...chatMessages.filter((m) => m.role !== 'system'),
   ];
+
+  const wantPuter = body.prefer === 'puter' || isPuterModel(useModel);
+  if (wantPuter) {
+    const puterMsgs = clipMessages(fullMessages, PUTER_MAX_MESSAGES, PUTER_MAX_CHARS);
+    const puterModel = isPuterModel(useModel) ? useModel : PUTER_FABLE;
+    return handlePuterChat(request, env, auth, requestId, role, puterMsgs, puterModel, start);
+  }
 
   // ── Escalation check: if role requires VPS and VPS is enabled ──
   if (roleConfig.escalate_to_vps && isVpsEnabled(env)) {
@@ -1135,7 +1368,7 @@ async function getVpsHealthStatus(env) {
   try {
     const resp = await fetch(`${env.VPS_AI_AGENT_URL}/health`, {
       signal: AbortSignal.timeout(5000),
-      headers: { 'User-Agent': 'Mozilla/5.0 GrudgeLegion/1.6.8' },
+      headers: { 'User-Agent': 'Mozilla/5.0 GrudgeLegion/1.6.9' },
     });
     return resp.ok ? 'healthy' : `error-${resp.status}`;
   } catch {
@@ -1181,7 +1414,7 @@ async function escalateToVps(env, role, messages, temperature, maxTokens, reques
       method: endpoint === '/ai/faction/intel' ? 'GET' : 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 GrudgeLegion/1.6.8',
+        'User-Agent': 'Mozilla/5.0 GrudgeLegion/1.6.9',
         'x-internal-key': internalKey || '',
         'X-Request-Id': requestId,
       },
@@ -1462,6 +1695,17 @@ const ALLOWED_ORIGINS = [
   'https://grudge-rts.vercel.app',
   'https://grudgecontrol.vercel.app',
   'https://grudaagent.vercel.app',
+  'https://casting.grudge.studio',
+  'https://casting.grudge-studio.com',
+  'https://client.grudge-studio.com',
+  'https://mineloader.grudge-studio.com',
+  'https://mine.grudge-studio.com',
+  'https://water.grudge-studio.com',
+  'https://terrain.grudge-studio.com',
+  'https://island-terrain-world-engine.pages.dev',
+  'https://grudge-combat.vercel.app',
+  'https://warlord-genesis.vercel.app',
+  'https://threeflow.vercel.app',
   'https://app.puter.com',
   'https://molochdagod.github.io',
 ];
@@ -1482,7 +1726,10 @@ function corsResponse(response, origin) {
     || origin.endsWith('.grudge-studio.com')
     || origin.endsWith('.grudgestudio.com')
     || origin.endsWith('.puter.site')
-    || origin.endsWith('.puter.work');
+    || origin.endsWith('.puter.work')
+    || origin.endsWith('.grudge.studio')
+    || origin.startsWith('http://localhost:')
+    || origin.startsWith('http://127.0.0.1:');
 
   headers.set('Access-Control-Allow-Origin', allowed ? (origin || '*') : ALLOWED_ORIGINS[0]);
   headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
