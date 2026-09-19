@@ -1,6 +1,8 @@
 # Legion attach map — fleet consumers
 
 **Canonical brain:** `https://ai.grudge-studio.com`  
+**Version:** 1.6.11  
+**Context pack:** `GET /v1/context` · [AI_CONTEXT_SSOT.md](./AI_CONTEXT_SSOT.md) · [DEPLOY_HARDENING.md](./DEPLOY_HARDENING.md) · [WIRING.md](./WIRING.md)
 **Version:** 1.6.13  
 **Context pack:** `GET /v1/context` · [AI_CONTEXT_SSOT.md](./AI_CONTEXT_SSOT.md) · [DEPLOY_HARDENING.md](./DEPLOY_HARDENING.md)
 
@@ -53,6 +55,24 @@ Content-Type: application/json
 
 ---
 
+## Env recipes + wiring
+
+Machine: `GET https://ai.grudge-studio.com/v1/env-recipes` (also on `/v1/context.env_recipes`)  
+Human: [WIRING.md](./WIRING.md)
+
+| Client | Recipe to consume | Role |
+|--------|-------------------|------|
+| Forge SPA / free-ai | `grudge-forge-r3f` | `forge` |
+| Warlords / kits / mixer | `grudge-play` | `director` + `animator` |
+| Coder GRUDAIDE default | `grudge-play` | `coder` |
+| Vibe proto only | `grudge-vibe-mp` | `vibe3d` — do not leak pins |
+
+Browser Legion cannot `npm install` (`nodeRunner: false`). Write recipe → Puter `/grudge-studio/<slug>` or local agent.
+
+Attach snippet lives in WIRING.md. Do not fork host maps in Forge / Puter / Coder.
+
+---
+
 ## Cloudflare AI on Legion only
 
 | Binding / product | Status | Notes |
@@ -91,8 +111,7 @@ Smoke:
 
 ```bash
 curl -s https://ai.grudge-studio.com/health
-# expect: version 1.5.x, gemini_byok configured, workers_ai available
-# after Groq: "groq":"configured"
+# expect: version 1.6.11, env_recipes on /v1/context, /v1/env-recipes lists grudge-play
 ```
 
 ---
@@ -133,5 +152,26 @@ See Forge `docs/ACCOUNT_PUTER_ENGINE_SSOT.md`.
 - [x] Legion `GROQ_API_KEY` (both workers)  
 - [x] free-ai + puter `GROQ_API_KEY`  
 - [x] `POLY_PIZZA_API_KEY` on Legion / free-ai / puter (edge only)  
+- [x] env_recipes + WIRING.md 1.6.11  
+- [ ] Dual-worker deploy of 1.6.11 (`index.js` `/v1/env-recipes` route)  
 - [ ] free-ai `GRUDGE_AI_KEY` for guests  
 - [ ] Agent jobs invoke Legion roles  
+
+
+---
+
+## Env recipes + wiring
+
+Machine: `GET https://ai.grudge-studio.com/v1/env-recipes`  
+Human: [WIRING.md](./WIRING.md)
+
+| Client | Recipe to consume | Role |
+|--------|-------------------|------|
+| Forge SPA / free-ai | `grudge-forge-r3f` | `forge` |
+| Warlords / kits / mixer | `grudge-play` | `director` + `animator` |
+| Coder GRUDAIDE default | `grudge-play` | `coder` |
+| Vibe proto only | `grudge-vibe-mp` | `vibe3d` — do not leak pins |
+
+Browser Legion cannot `npm install` (`nodeRunner: false`). Write recipe → Puter `/grudge-studio/<slug>` or local agent.
+
+Attach snippet lives in WIRING.md. Do not fork host maps in Forge / Puter / Coder.
