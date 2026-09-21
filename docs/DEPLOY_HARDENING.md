@@ -1,5 +1,6 @@
 # Deploy hardening — Legion + fleet AI surfaces
 
+**Version:** 1.6.13 · machine checklist also on `GET /v1/context` → `deploy_hardening`
 **Version:** 1.6.12 · machine checklist also on `GET /v1/context` → `deploy_hardening`
 
 ## Principles
@@ -58,8 +59,9 @@ npm run deploy:bridge
 
 | URL | Expect |
 |-----|--------|
-| https://ai.grudge-studio.com/health | `ok`, version ≥ 1.6.1 |
-| https://ai.grudge-studio.com/v1/context | `ok`, `one_truth.puter_space` + `asset_serve` |
+| https://ai.grudge-studio.com/health | `ok`, version ≥ 1.6.13 |
+| https://ai.grudge-studio.com/v1/context | `ok`, `one_truth.puter_space` + `asset_serve` + `env_recipes` |
+| https://ai.grudge-studio.com/v1/env-recipes | `ok`, recipes include `grudge-play` |
 | https://ai.grudge-studio.com/puter-space | 200 HTML (account cloud UI) |
 | https://ai.grudge-studio.com/v1/skills | skill count ≥ 20 |
 | https://ai.grudge-studio.com/v1/ssot | context + puter_space pointers |

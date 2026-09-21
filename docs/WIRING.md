@@ -2,7 +2,7 @@
 
 **Canonical brain:** `https://ai.grudge-studio.com`  
 **Machine pack:** `GET /v1/context` · `GET /v1/ssot` · `GET /v1/env-recipes` · `GET /v1/skills`  
-**Version:** 1.6.11
+**Version:** 1.6.13
 
 This is the attach contract. Hands (Forge free-ai, Puter `/api/ai`, fleet `/api/ai` rewrites) call Legion. They do not mint a second public LLM domain.
 

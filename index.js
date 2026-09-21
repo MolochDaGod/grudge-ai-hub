@@ -9,6 +9,7 @@
  *   GET    /api/health              Fleet health alias (public)
  *   GET    /                        GRUDA Agent UI (proxied from UI_ORIGIN)
  *   GET    /v1/agents               List agent roles (public)
+ *   GET    /v1/env-recipes          npm / play / forge / vibe recipes + wiring (public)
  *   POST   /v1/chat                 General chat (auth)
  *   POST   /v1/agents/:role/chat    Role-specialized chat (auth)
  *   POST   /v1/vision               Image + text (Gemini vision, auth)
@@ -70,6 +71,7 @@ import {
   DEPLOY_HARDENING,
   CONTEXT_VERSION,
 } from './lib/fleetContext.js';
+import { listEnvRecipes } from './lib/envRecipes.js';
 import { Observatory } from './lib/observatory-client.js';
 import {
   handleIconLookup,
@@ -130,6 +132,13 @@ export default {
       }
       if (url.pathname === '/v1/ssot' && method === 'GET') {
         return finish(obs, request, corsResponse(handleSsotPointers(), origin), t0);
+      }
+      if ((url.pathname === '/v1/env-recipes' || url.pathname === '/v1/recipes') && method === 'GET') {
+        return finish(obs, request, corsResponse(json({
+          version: HUB_VERSION,
+          context_version: CONTEXT_VERSION,
+          ...listEnvRecipes(),
+        }), origin), t0);
       }
       if ((url.pathname === '/v1/games' || url.pathname === '/v1/deployments') && method === 'GET') {
         return finish(obs, request, corsResponse(handleGameDeployments(), origin), t0);
@@ -608,6 +617,7 @@ async function handleHealth(env) {
       '/v1/ssot',
       '/v1/skills',
       '/v1/context',
+      '/v1/env-recipes',
       '/puter-space',
     ],
     agent_skill_count: Object.keys(AGENT_SKILLS).length,
@@ -639,6 +649,8 @@ function handleSsotPointers() {
     definitions: ONE_TRUTH.definitions,
     ai: ONE_TRUTH.ai,
     skills: ONE_TRUTH.ai_skills,
+    env_recipes: 'https://ai.grudge-studio.com/v1/env-recipes',
+    wiring: 'https://github.com/MolochDaGod/grudge-ai-hub/blob/main/docs/WIRING.md',
     puter: ONE_TRUTH.puter,
     puter_space: ONE_TRUTH.puter_space,
     puter_dashboard: 'https://puter.grudge-studio.com/dashboard',
