@@ -3,7 +3,7 @@
 **Canonical pack (machine):** `GET https://ai.grudge-studio.com/v1/context`  
 **Pointers:** `GET https://ai.grudge-studio.com/v1/ssot`  
 **Agent roles:** `GET https://ai.grudge-studio.com/v1/skills`  
-**Version:** 1.6.11 · code `lib/fleetContext.js` + `lib/agentSkills.js` + `lib/envRecipes.js`
+**Version:** 1.6.13 · code `lib/fleetContext.js` + `lib/agentSkills.js` + `lib/envRecipes.js`
 **Version:** 1.6.9 · code `lib/fleetContext.js` + `lib/agentSkills.js`
 
 This is how **Legion and fleet agents** learn Grudge Studio topology, **info.grudge-studio.com**, deployable AI systems, **agentic / GRD Grudachain**, and deploy law — without inventing parallel hosts.

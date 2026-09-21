@@ -139,6 +139,7 @@ export default {
           context_version: CONTEXT_VERSION,
           ...listEnvRecipes(),
         }), origin), t0);
+      }
       if ((url.pathname === '/v1/games' || url.pathname === '/v1/deployments') && method === 'GET') {
         return finish(obs, request, corsResponse(handleGameDeployments(), origin), t0);
       }
