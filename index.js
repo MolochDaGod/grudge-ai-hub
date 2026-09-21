@@ -70,8 +70,8 @@ import {
   GAME_DEPLOYMENTS,
   DEPLOY_HARDENING,
   CONTEXT_VERSION,
-  listEnvRecipes,
 } from './lib/fleetContext.js';
+import { listEnvRecipes } from './lib/envRecipes.js';
 import { Observatory } from './lib/observatory-client.js';
 import {
   handleIconLookup,
