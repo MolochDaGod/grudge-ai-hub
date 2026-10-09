@@ -75,6 +75,10 @@ zone_id = "e8c0c2ee3063f24eb31affddabf9730a"
 pattern = "ai.grudge-studio.com/api/health"
 zone_id = "e8c0c2ee3063f24eb31affddabf9730a"
 
+# Daily growth smoke (free AI + Spawn doors) — see docs/GROWTH_CADENCE_SSOT.md
+[triggers]
+crons = ["0 14 * * *"]
+
 # ── Staging ───────────────────────────────────────────────────────────────────
 [env.staging]
 name = "grudge-ai-hub-staging"

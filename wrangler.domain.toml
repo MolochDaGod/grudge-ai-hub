@@ -71,3 +71,7 @@ custom_domain = true
 [observability]
 enabled = true
 head_sampling_rate = 1
+
+# Same daily growth smoke as wrangler.toml (free AI + Spawn). See docs/GROWTH_CADENCE_SSOT.md
+[triggers]
+crons = ["0 14 * * *"]

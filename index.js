@@ -325,6 +325,14 @@ export default {
       }
     }
   },
+
+  /**
+   * Daily growth smoke — free-AI attach + Spawn doors.
+   * Writes KV growth:last-check. Does not mutate games or spend paid lanes.
+   */
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runGrowthCadenceCheck(env, event));
+  },
 };
 
 function finish(obs, request, response, t0) {
@@ -694,7 +702,73 @@ function handleSsotPointers() {
     deploy_hardening: DEPLOY_HARDENING.post_deploy_smoke,
     rapier_api: 'https://rapier.rs/docs/api/javascript/JavaScript3D',
     rapier_checklist: '/v1/rapier/checklist',
+    /** Growth cadence — free AI · Spawn · game improvement schedule */
+    growth: {
+      id: 'grudge-ai-spawn-growth',
+      doc: 'https://github.com/MolochDaGod/grudge-ai-hub/blob/main/docs/GROWTH_CADENCE_SSOT.md',
+      free_ai_join: 'https://github.com/MolochDaGod/grudge-ai-hub/blob/main/docs/FREE_AI_JOIN_SSOT.md',
+      dev_tool_cadence:
+        'https://github.com/Grudge-Warlords/grudge-dev-tool/blob/main/docs/ai-spawn-growth-cadence.md',
+      lanes: ['daily', 'weekly', 'monthly'],
+      brain: 'https://ai.grudge-studio.com',
+      forge_free_ai: 'https://forge.grudge-studio.com/api/free-ai/status',
+      spawn: 'https://www.spawn.co/llms.txt',
+      last_check: 'KV key growth:last-check (cron)',
+    },
   });
+}
+
+/** Cron: probe free-AI join surfaces; store summary in KV (no secrets, no paid spend). */
+async function runGrowthCadenceCheck(env, event) {
+  const probes = [
+    { id: 'legion-self', url: null },
+    { id: 'forge-free-ai', url: 'https://forge.grudge-studio.com/api/free-ai/status' },
+    { id: 'spawn-llms', url: 'https://www.spawn.co/llms.txt' },
+  ];
+  const results = [];
+  for (const p of probes) {
+    if (!p.url) {
+      results.push({ id: p.id, ok: true, detail: 'cron-self' });
+      continue;
+    }
+    const t0 = Date.now();
+    try {
+      const res = await fetch(p.url, {
+        signal: AbortSignal.timeout(12000),
+        headers: { Accept: 'application/json, text/plain, */*' },
+      });
+      results.push({
+        id: p.id,
+        ok: res.ok,
+        status: res.status,
+        ms: Date.now() - t0,
+      });
+    } catch (e) {
+      results.push({
+        id: p.id,
+        ok: false,
+        status: 0,
+        ms: Date.now() - t0,
+        detail: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+  const payload = {
+    at: new Date().toISOString(),
+    cron: event?.cron || null,
+    scheduledTime: event?.scheduledTime || null,
+    ok: results.every((r) => r.ok),
+    results,
+    doc: 'docs/GROWTH_CADENCE_SSOT.md',
+  };
+  try {
+    await env.KV.put('growth:last-check', JSON.stringify(payload), {
+      expirationTtl: 60 * 60 * 24 * 14,
+    });
+  } catch (e) {
+    console.error('growth cadence KV write failed', e);
+  }
+  return payload;
 }
 
 const RAPIER_SYSTEM = `You are the Grudge Studio Rapier physics deploy agent.

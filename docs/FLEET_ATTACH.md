@@ -13,10 +13,15 @@ Forge-side detail: `Grudge-Studio-Forge/docs/AI_FLEET_ATTACH_SSOT.md`.
 
 | Client | How | Auth |
 |--------|-----|------|
-| **Forge free-ai** | `POST /api/free-ai/chat?provider=grudge-ai` → Legion | User JWT or `GRUDGE_AI_KEY` |
+| **Forge free-ai** | `POST /api/free-ai/chat?provider=grudge-ai` → Legion | User JWT or `GRUDGE_AI_KEY` (guest key on Worker OK) |
 | **Forge SPA** | Same-origin free-ai (never call providers from browser) | Grudge ID + Puter |
+| **Catsot / ALE** | Worker waterfall: Groq → Legion companion → Forge free-ai → optional Railway → xAI | `GROQ_API_KEY` + prefer `GRUDGE_AI_KEY` |
+| **Telegram @grudagamebot** | Groq agent loop + tools `forge_free_ai_chat` / `legion_chat` / `hermes_*` | Railway env; Hermes needs API key/cookie |
+| **Hermes VPS** | Executor UI + `/api/chat` (auth_required) — not a second brain | Session / `VPS_INTERNAL_KEY` |
 | **puter.grudge-studio.com** | Edge `/api/ai/*` or Legion `/v1/*` | Grudge JWT |
 | **Other fleet games** | Prefer same-origin `/api/ai` rewrite → Legion | Grudge JWT |
+
+Full join matrix: [FREE_AI_JOIN_SSOT.md](./FREE_AI_JOIN_SSOT.md).
 
 ---
 
