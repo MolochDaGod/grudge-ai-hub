@@ -72,6 +72,7 @@ import {
   CONTEXT_VERSION,
 } from './lib/fleetContext.js';
 import { listEnvRecipes } from './lib/envRecipes.js';
+import { groundRole, getCanonBrief, CANON_ROLES } from './lib/canonGrounding.js';
 import { Observatory } from './lib/observatory-client.js';
 import {
   handleIconLookup,
@@ -158,6 +159,11 @@ export default {
         method === 'GET'
       ) {
         return finish(obs, request, corsResponse(json(buildContextPack()), origin), t0);
+      }
+      // Public canon brief Legion grounds world-facing roles on (evals read this too)
+      if (url.pathname === '/v1/canon' && method === 'GET') {
+        const c = await getCanonBrief(env);
+        return finish(obs, request, corsResponse(json({ ok: c.ok, version: c.version, roles: [...CANON_ROLES], brief: c.brief }), origin), t0);
       }
       // Public agent skills catalog (system skills SSOT for fleet + puter toolkit)
       if ((url.pathname === '/v1/skills' || url.pathname === '/v1/agent-skills') && method === 'GET') {
@@ -365,7 +371,7 @@ async function authenticate(request, env) {
 
   // 0) Server fleet key (Forge free-ai / same-origin game rewrites)
   const fleetKey = (env.GRUDGE_AI_KEY || env.LEGION_HUB_API_KEY || '').trim();
-  if (fleetKey && apiKey === fleetKey) {
+  if (fleetKey && (await timingSafeEqualStr(apiKey, fleetKey))) {
     return {
       keyId: 'grudge-ai-key',
       name: 'fleet',
@@ -376,21 +382,22 @@ async function authenticate(request, env) {
     };
   }
 
-  // 1) Fleet Grudge ID JWT (same secret as Railway / id gateway) — member chat
-  if (env.JWT_SECRET && apiKey.split('.').length === 3) {
-    const payload = await verifyHs256Jwt(apiKey, env.JWT_SECRET);
-    if (payload) {
-      const grudgeId = String(payload.grudge_id || payload.sub || payload.userId || 'jwt-user');
-      const tier = String(payload.tier || payload.role || 'member');
-      const scope = tier === 'admin' || tier === 'master_admin' ? 'admin' : 'member';
-      return {
-        keyId: `jwt:${grudgeId}`,
-        name: grudgeId,
-        scope,
-        tier,
-        rpmLimit: scope === 'admin' ? 300 : 120,
-        authType: 'grudge_jwt',
-      };
+  // 1) Grudge ID token — verified remotely by id.grudge-studio.com (no signing secret in this Worker).
+  //    Member scope only: admin comes from D1 api_keys, never from token claims.
+  //    AUTH_LOCAL_JWT=1 keeps the old local HS256 check for a rollback window; it also grants member only.
+  if (apiKey.split('.').length === 3) {
+    if (env.AUTH_LOCAL_JWT === '1' && env.JWT_SECRET) {
+      const payload = await verifyHs256Jwt(apiKey, env.JWT_SECRET);
+      if (payload) {
+        const grudgeId = String(payload.grudgeId || payload.grudge_id || payload.sub || payload.userId || 'jwt-user');
+        return { keyId: `jwt:${grudgeId}`, name: grudgeId, scope: 'member', tier: 'member', rpmLimit: 120, authType: 'grudge_jwt_local' };
+      }
+    } else {
+      const v = await verifyGrudgeIdRemote(apiKey, env);
+      if (v.error) return { error: v.error };
+      if (v.valid) {
+        return { keyId: `gid:${v.grudgeId}`, name: v.username || v.grudgeId, grudgeId: v.grudgeId, scope: 'member', tier: 'member', rpmLimit: 120, authType: 'grudge_id' };
+      }
     }
   }
 
@@ -415,12 +422,8 @@ async function authenticate(request, env) {
 
     return { keyId: row.id, name: row.name, scope: row.scope, tier: row.tier, rpmLimit: row.rpm_limit, authType: 'api_key' };
   } catch (err) {
-    // D1 unavailable — allow with default limits if key matches env fallback
-    console.warn('D1 auth lookup failed, checking env fallback:', err.message);
-    const fallbackKey = env.VPS_INTERNAL_KEY;
-    if (fallbackKey && apiKey === fallbackKey) {
-      return { keyId: 'env-fallback', name: 'internal', scope: 'admin', tier: 'internal', rpmLimit: 300, authType: 'env' };
-    }
+    // D1 unavailable — fail closed. No env key is promoted to admin.
+    console.warn('D1 auth lookup failed:', err.message);
     return { error: 'Authentication service unavailable' };
   }
 }
@@ -455,6 +458,53 @@ async function verifyHs256Jwt(token, secret) {
   } catch {
     return null;
   }
+}
+
+/** Constant-time string compare (same length check leaks only length). */
+async function timingSafeEqualStr(a, b) {
+  const enc = new TextEncoder();
+  const [ha, hb] = await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(String(a))),
+    crypto.subtle.digest('SHA-256', enc.encode(String(b))),
+  ]);
+  const x = new Uint8Array(ha), y = new Uint8Array(hb);
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
+  return diff === 0;
+}
+
+const GRUDGE_ID_VERIFY_URL = 'https://id.grudge-studio.com/api/auth/verify';
+const VERIFY_CACHE_SECONDS = 60;
+
+/**
+ * Grudge ID verify contract: GET with Bearer, always 200, branch on valid === true.
+ * 500, a network error or a bad body is "service unavailable" (fail closed), not "invalid".
+ * Successes are cached 60 s by token hash; the token itself is never stored.
+ */
+async function verifyGrudgeIdRemote(token, env) {
+  const verifyUrl = (env.GRUDGE_ID_VERIFY_URL || GRUDGE_ID_VERIFY_URL).trim();
+  const cacheKey = new Request(`https://legion-verify-cache.invalid/${await sha256(token)}`);
+  const cache = typeof caches !== 'undefined' ? caches.default : null;
+  if (cache) {
+    const hit = await cache.match(cacheKey);
+    if (hit) {
+      try { return await hit.json(); } catch { /* fall through */ }
+    }
+  }
+  let body;
+  try {
+    const res = await fetch(verifyUrl, { method: 'GET', headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+    if (res.status !== 200) return { error: 'Grudge ID unavailable' };
+    body = await res.json();
+  } catch {
+    return { error: 'Grudge ID unavailable' };
+  }
+  if (!body || body.valid !== true || !body.grudgeId) return { valid: false };
+  const out = { valid: true, grudgeId: String(body.grudgeId), userId: body.userId ?? null, username: body.username ?? null };
+  if (cache) {
+    await cache.put(cacheKey, new Response(JSON.stringify(out), { headers: { 'Cache-Control': `max-age=${VERIFY_CACHE_SECONDS}`, 'Content-Type': 'application/json' } }));
+  }
+  return out;
 }
 
 async function sha256(text) {
@@ -547,7 +597,7 @@ async function handleHealth(env) {
       elevenlabs: isElevenConfigured(env) ? 'configured' : 'missing',
       poly_pizza: env.POLY_PIZZA_API_KEY || env.POLY_PIZZA_API ? 'configured' : 'missing',
       vps_ai_agent: vpsStatus,
-      grudge_jwt: env.JWT_SECRET ? 'configured' : 'optional',
+      grudge_jwt: env.AUTH_LOCAL_JWT === '1' && env.JWT_SECRET ? 'local (rollback mode)' : 'remote verify (id.grudge-studio.com)',
       xai_grok: grok ? 'configured' : (ui ? 'ui_missing' : 'unknown'),
     },
     llm_waterfall: [
@@ -917,7 +967,7 @@ async function handlePublicModels(env) {
     models,
     agents,
     auth: {
-      chat: 'Bearer API key (D1 api_keys) or Grudge ID JWT when JWT_SECRET is set',
+      chat: 'Bearer API key (D1 api_keys) or Grudge ID token (verified by id.grudge-studio.com)',
       public: ['/v1/models', '/v1/agents', '/v1/games', '/health', '/v1/ssot', '/v1/context', '/v1/skills'],
     },
     endpoints: {
@@ -1132,13 +1182,27 @@ async function handleChat(request, env, auth, requestId, role) {
     }
   }
 
-  let useModel = model || roleConfig.model;
+  // Cost guard: members may only pick the role's model, a model on ALLOWED_MODELS, or a Puter model
+  // (Puter is billed to the player's own token). Admins may pick any model. Output tokens are capped.
+  const isAdmin = auth.scope === 'admin';
+  const allowedModels = new Set(
+    [roleConfig.model, env.DEFAULT_AI_MODEL, ...String(env.ALLOWED_MODELS || '').split(',')]
+      .map((m) => String(m || '').trim()).filter(Boolean),
+  );
+  let useModel = roleConfig.model;
+  if (model && (isAdmin || allowedModels.has(model) || isPuterModel(model))) useModel = model;
   if (isRetiredCohereModel(useModel) || body.prefer === 'cohere') {
     useModel = env.DEFAULT_AI_MODEL || DEFAULT_GEMINI_MODEL;
     body.prefer = undefined;
   }
   const useTemp = temperature ?? roleConfig.temperature;
-  const useMaxTokens = maxOutputTokens ?? max_tokens ?? roleConfig.max_tokens;
+  const hardCap = parseInt(env.MAX_OUTPUT_TOKENS_CAP || '4096', 10);
+  const roleCap = isAdmin ? hardCap : Math.min(hardCap, Number(roleConfig.max_tokens) || hardCap);
+  const askedTokens = Number(maxOutputTokens ?? max_tokens ?? roleConfig.max_tokens) || roleCap;
+  const useMaxTokens = Math.max(1, Math.min(askedTokens, roleCap));
+
+  // Canon grounding (retrieval) for world-facing roles; see lib/canonGrounding.js
+  ({ roleConfig } = await groundRole(env, roleConfig.role || role, roleConfig));
 
   // Build full messages array with system prompt (for @cf models and VPS fallback)
   const fullMessages = [
@@ -1183,6 +1247,16 @@ async function handleChat(request, env, auth, requestId, role) {
     message,
     temperature: useTemp,
     max_tokens: useMaxTokens,
+    maxOutputTokens: useMaxTokens,
+    model: useModel,
+    // Members cannot replace the role prompt or lift the cap through Gemini-native fields.
+    ...(isAdmin ? {} : {
+      contents: undefined,
+      systemInstruction: undefined,
+      generationConfig: body.generationConfig && typeof body.generationConfig === 'object'
+        ? { ...body.generationConfig, maxOutputTokens: useMaxTokens }
+        : undefined,
+    }),
   };
 
   async function tryAi(modelId) {

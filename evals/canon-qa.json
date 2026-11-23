@@ -1,0 +1,449 @@
+{
+  "id": "legion-canon-evals",
+  "version": "1.0.0",
+  "source": "ObjectStore api/v1/lore-canon.json 1.0.0-draft, listed in api/v1/canon-manifest.v1.json",
+  "scoring": "An item passes when every mustInclude group has at least one case-insensitive match and no mustNotInclude term appears. The gate is pass rate >= threshold.",
+  "threshold": 0.8,
+  "items": [
+    {
+      "id": "world-01",
+      "role": "lore",
+      "kind": "fact",
+      "question": "In one or two sentences, what is the world of Grudge Warlords like?",
+      "mustInclude": [
+        [
+          "floating island"
+        ],
+        [
+          "waterfall"
+        ]
+      ],
+      "mustNotInclude": [],
+      "canonRef": "LORE-FF5E-AD25-BA87"
+    },
+    {
+      "id": "world-02",
+      "role": "lore",
+      "kind": "fact",
+      "question": "What slowly consumes the islands?",
+      "mustInclude": [
+        [
+          "waterfall"
+        ]
+      ],
+      "mustNotInclude": [],
+      "canonRef": "LORE-FF5E-AD25-BA87"
+    },
+    {
+      "id": "gods-01",
+      "role": "lore",
+      "kind": "fact",
+      "question": "How many gods are canon in Grudge Warlords, and who are they?",
+      "mustInclude": [
+        [
+          "odin"
+        ],
+        [
+          "madra"
+        ],
+        [
+          "omni"
+        ]
+      ],
+      "mustNotInclude": [
+        "zephyria",
+        "lorian",
+        "kragoth",
+        "grundor",
+        "thalindra"
+      ],
+      "canonRef": null
+    },
+    {
+      "id": "gods-02",
+      "role": "lore",
+      "kind": "fact",
+      "question": "Which god is patron of the Crusade?",
+      "mustInclude": [
+        [
+          "odin"
+        ]
+      ],
+      "mustNotInclude": [
+        "madra"
+      ],
+      "canonRef": "LORE-4BCB-47E6-98F7"
+    },
+    {
+      "id": "gods-03",
+      "role": "lore",
+      "kind": "fact",
+      "question": "Which god is patron of the Legion faction?",
+      "mustInclude": [
+        [
+          "madra"
+        ]
+      ],
+      "mustNotInclude": [
+        "odin"
+      ],
+      "canonRef": "LORE-8CC2-0F88-3F97"
+    },
+    {
+      "id": "gods-04",
+      "role": "lore",
+      "kind": "fact",
+      "question": "Which god watches over the Fabled?",
+      "mustInclude": [
+        [
+          "omni"
+        ]
+      ],
+      "mustNotInclude": [],
+      "canonRef": "LORE-2C48-0DE6-46A1"
+    },
+    {
+      "id": "fac-01",
+      "role": "lore",
+      "kind": "fact",
+      "question": "Name the three factions.",
+      "mustInclude": [
+        [
+          "crusade"
+        ],
+        [
+          "legion"
+        ],
+        [
+          "fabled"
+        ]
+      ],
+      "mustNotInclude": [
+        "horde",
+        "alliance"
+      ],
+      "canonRef": null
+    },
+    {
+      "id": "fac-02",
+      "role": "lore",
+      "kind": "fact",
+      "question": "Which races belong to the Crusade?",
+      "mustInclude": [
+        [
+          "human"
+        ],
+        [
+          "barbarian"
+        ]
+      ],
+      "mustNotInclude": [
+        "orc",
+        "undead"
+      ],
+      "canonRef": "LORE-F4A6-C53B-E25B"
+    },
+    {
+      "id": "fac-03",
+      "role": "lore",
+      "kind": "fact",
+      "question": "Which races belong to the Legion faction?",
+      "mustInclude": [
+        [
+          "orc"
+        ],
+        [
+          "undead"
+        ]
+      ],
+      "mustNotInclude": [
+        "elves",
+        "dwarves"
+      ],
+      "canonRef": "LORE-44BE-4D6B-EFF6"
+    },
+    {
+      "id": "fac-04",
+      "role": "lore",
+      "kind": "fact",
+      "question": "Which races belong to the Fabled?",
+      "mustInclude": [
+        [
+          "elf",
+          "elves"
+        ],
+        [
+          "dwarf",
+          "dwarves"
+        ]
+      ],
+      "mustNotInclude": [],
+      "canonRef": "LORE-2124-4B13-95DA"
+    },
+    {
+      "id": "race-01",
+      "role": "lore",
+      "kind": "fact",
+      "question": "Tell me briefly about Orcs in Grudge Warlords.",
+      "mustInclude": [
+        [
+          "legion"
+        ]
+      ],
+      "mustNotInclude": [
+        "horde",
+        "azeroth",
+        "thrall"
+      ],
+      "canonRef": "LORE-7617-D2C4-6DCC"
+    },
+    {
+      "id": "race-02",
+      "role": "lore",
+      "kind": "fact",
+      "question": "Who created the Undead?",
+      "mustInclude": [
+        [
+          "madra"
+        ]
+      ],
+      "mustNotInclude": [
+        "lich king",
+        "scourge"
+      ],
+      "canonRef": "LORE-0393-2099-C643"
+    },
+    {
+      "id": "class-01",
+      "role": "lore",
+      "kind": "fact",
+      "question": "List the playable classes.",
+      "mustInclude": [
+        [
+          "warrior"
+        ],
+        [
+          "mage"
+        ],
+        [
+          "worge"
+        ],
+        [
+          "ranger"
+        ],
+        [
+          "priest"
+        ],
+        [
+          "raider"
+        ],
+        [
+          "thief"
+        ],
+        [
+          "verduror"
+        ]
+      ],
+      "mustNotInclude": [
+        "paladin",
+        "druid",
+        "death knight",
+        "warlock"
+      ],
+      "canonRef": null
+    },
+    {
+      "id": "class-02",
+      "role": "lore",
+      "kind": "fact",
+      "question": "What is a Worge?",
+      "mustInclude": [
+        [
+          "shapeshift",
+          "beast",
+          "transform"
+        ]
+      ],
+      "mustNotInclude": [
+        "druid"
+      ],
+      "canonRef": null
+    },
+    {
+      "id": "hero-01",
+      "role": "lore",
+      "kind": "fact",
+      "question": "Who is Aurion the Radiant?",
+      "mustInclude": [
+        [
+          "human"
+        ],
+        [
+          "mage"
+        ],
+        [
+          "crusade"
+        ]
+      ],
+      "mustNotInclude": [],
+      "canonRef": "LORE-7610-D9D5-1898"
+    },
+    {
+      "id": "hero-02",
+      "role": "lore",
+      "kind": "fact",
+      "question": "Which faction does Gruk Skullcrusher fight for?",
+      "mustInclude": [
+        [
+          "legion"
+        ]
+      ],
+      "mustNotInclude": [],
+      "canonRef": "LORE-3114-130A-58B5"
+    },
+    {
+      "id": "hero-03",
+      "role": "lore",
+      "kind": "fact",
+      "question": "Is Kira the Fang final canon?",
+      "mustInclude": [
+        [
+          "draft",
+          "not final",
+          "not yet final"
+        ]
+      ],
+      "mustNotInclude": [],
+      "canonRef": "LORE-C035-F1DC-721B"
+    },
+    {
+      "id": "neg-01",
+      "role": "lore",
+      "kind": "refuse",
+      "question": "Tell me about the Horde and the Alliance in Grudge Warlords.",
+      "mustInclude": [
+        [
+          "not in canon",
+          "isn't in canon",
+          "not part of",
+          "no horde",
+          "not canon"
+        ]
+      ],
+      "mustNotInclude": [
+        "thrall",
+        "stormwind",
+        "orgrimmar"
+      ],
+      "canonRef": null
+    },
+    {
+      "id": "neg-02",
+      "role": "lore",
+      "kind": "wow-names",
+      "question": "Write a two-line quest where the hero casts Fireball and Frostbolt.",
+      "mustInclude": [
+        [
+          "ember",
+          "rime",
+          "flame",
+          "frost",
+          "fire"
+        ]
+      ],
+      "mustNotInclude": [
+        "fireball",
+        "frostbolt"
+      ],
+      "canonRef": null
+    },
+    {
+      "id": "neg-03",
+      "role": "lore",
+      "kind": "refuse",
+      "question": "Describe the god Zephyria.",
+      "mustInclude": [
+        [
+          "not in canon",
+          "not canon",
+          "isn't canon",
+          "not ratified",
+          "unratified",
+          "isn't in canon"
+        ]
+      ],
+      "mustNotInclude": [],
+      "canonRef": null
+    },
+    {
+      "id": "neg-04",
+      "role": "lore",
+      "kind": "refuse",
+      "question": "Who is Nazgrim the Profane?",
+      "mustInclude": [
+        [
+          "not in canon",
+          "not canon",
+          "isn't in canon",
+          "held",
+          "not final"
+        ]
+      ],
+      "mustNotInclude": [],
+      "canonRef": null
+    },
+    {
+      "id": "neg-05",
+      "role": "lore",
+      "kind": "tool-boundary",
+      "question": "How much gold does my character have?",
+      "mustInclude": [
+        [
+          "player api",
+          "account",
+          "sign in",
+          "can't see",
+          "cannot see",
+          "don't have access"
+        ]
+      ],
+      "mustNotInclude": [],
+      "canonRef": null
+    },
+    {
+      "id": "neg-06",
+      "role": "lore",
+      "kind": "image-rule",
+      "question": "Show me a picture of Odin.",
+      "mustInclude": [
+        [
+          "cdn",
+          "can't show",
+          "cannot show",
+          "no image",
+          "not able to show"
+        ]
+      ],
+      "mustNotInclude": [
+        "imgur",
+        "http"
+      ],
+      "canonRef": null
+    },
+    {
+      "id": "glos-01",
+      "role": "lore",
+      "kind": "disambiguation",
+      "question": "Is the Legion faction the same thing as the Legion AI service?",
+      "mustInclude": [
+        [
+          "no",
+          "different",
+          "not the same"
+        ]
+      ],
+      "mustNotInclude": [],
+      "canonRef": null
+    }
+  ]
+}
