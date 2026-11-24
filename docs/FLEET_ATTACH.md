@@ -25,6 +25,30 @@ Full join matrix: [FREE_AI_JOIN_SSOT.md](./FREE_AI_JOIN_SSOT.md).
 
 ---
 
+## Local OhMyGame (not a Legion consumer)
+
+The WhiteTowerAI/ohmygame project is a third-party local AI game studio (Apache-2.0). It does **not** call `ai.grudge-studio.com` by default, and Legion must **not** be configured to call it.
+
+Use it on a workstation for new Phaser / Three.js / R3F prototypes and canvas media:
+
+```bash
+git clone --branch main https://github.com/WhiteTowerAI/ohmygame.git
+cd ohmygame
+bun install --frozen-lockfile
+export OHMYGAME_DAEMON_TOKEN  # required on studio machines
+bun run dev            # 127.0.0.1:43120 renderer + 127.0.0.1:43110 daemon
+```
+
+Guardrails for fleet agents:
+
+- Leave `DAEMON_HOST` unset so the daemon stays on loopback. **Never set `DAEMON_HOST=0.0.0.0`**, and never tunnel or deploy the daemon.
+- Set `OHMYGAME_DAEMON_TOKEN` before `bun run dev`. Upstream is tokenless by default; studio machines must not run it that way.
+- Do not publish Warlords, Foundry, or fleet account flows through `games.ohmygame.ai`.
+- Shipped images and meshes are CDN-only: Kiln (unpublished), then Rook, then `assets.grudge-studio.com`. On a CDN miss, show the missing marker.
+- Keep Apache-2.0 attribution when redistributing or forking the software. Do not use the trademarked OhMyGame name or logo as Grudge branding.
+
+---
+
 ## Agent skills (sub-agents)
 
 Public catalog: `GET https://ai.grudge-studio.com/v1/skills`  

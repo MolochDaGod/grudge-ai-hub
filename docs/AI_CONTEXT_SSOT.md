@@ -61,6 +61,14 @@ This is how **Legion and fleet agents** learn Grudge Studio topology, **info.gru
 | **Coder AI Hub worker** | workers/ai-hub in GrudachainCode | Job events only — **not** Legion chat |
 | **Info / ObjectStore** | info. + objectstore. | Docs + definitions |
 
+### Local only (not a host)
+
+| System | Host | Role |
+|--------|------|------|
+| WhiteTowerAI/ohmygame (local AI game studio) | local only — `127.0.0.1:43120` renderer, `127.0.0.1:43110` daemon | Optional workstation tool for Phaser / Three.js / R3F prototypes. Loopback only; set `OHMYGAME_DAEMON_TOKEN`; never `DAEMON_HOST=0.0.0.0`. Not a Legion host, not player SSOT, not the asset CDN. |
+
+Agents learn this from [WIRING.md](./WIRING.md) and [FLEET_ATTACH.md](./FLEET_ATTACH.md), not from a new `/v1/agents/ohmygame` role — the hub cannot call a laptop daemon. Do not invent `ohmygame.grudge-studio.com`. Shipped assets are CDN-only (Kiln, then Rook, then `assets.grudge-studio.com`); a CDN miss shows the missing marker. Apache-2.0 attribution applies if the software is redistributed or forked; do not use the trademarked OhMyGame name or logo as Grudge branding.
+
 ---
 
 ## Agentic + GRD / Grudachain

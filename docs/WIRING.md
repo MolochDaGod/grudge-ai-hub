@@ -45,7 +45,7 @@ Browser / editor / game
 | **Coder / GRD** | consume `/v1/context` + `/v1/env-recipes` | Puter user `grudachain` in IDE; Grudge ID for games | Use Coder AI Hub worker as Legion chat |
 | **Warlords / Open / GRUDOX** | same-origin `/api/ai` rewrite → Legion | Grudge ID JWT | Merge brand SPAs |
 | **ObjectStore / info** | JSON defs + docs | public | Player bag |
-| **Local agent** | allow-listed `npm` / `node` / `git` / `ollama` | local | Claim browser Monaco can `npm i` |
+| **Local agent** | allow-listed `npm` / `node` / `git` / `ollama`; optional local OhMyGame studio (loopback daemon + MCP, token required) | local machine only | Claim browser Monaco can `npm i`; set `DAEMON_HOST=0.0.0.0` or tunnel the daemon; run `bun run dev` without `OHMYGAME_DAEMON_TOKEN`; treat OhMyGame as a second Legion brain, a player-account host, or Grudge branding |
 
 Chat shape (all roles):
 
@@ -74,6 +74,44 @@ npm law:
 - OK: `@grudgstudio/core` (defs / icons), `@grudge-studio/*` bake slices
 - Forbidden: `npm i grudge-studio` (unscoped 1.0.x is not play path)
 - Browser Legion: `nodeRunner === false`. Write the recipe to Puter `/grudge-studio/<slug>` or run `npm i` on the local agent / coder plane.
+
+
+## Local OhMyGame studio (optional, not a Legion host)
+
+The WhiteTowerAI/ohmygame project (Apache-2.0, beta) is a **local-first AI game studio**: an agent writes the game, generates canvas media, playtests it, and can publish a static web build. It is a good local path for **new** Phaser / Three.js / React Three Fiber prototypes. It is not a replacement for Warlords, not a production host, and not part of `ai.grudge-studio.com`.
+
+Legion Workers cannot reach a laptop's `127.0.0.1`. Do not add an `ohmygame` cloud chat role that pretends to drive the daemon. Point `director`, `dev`, `coder`, and `agentic` at this section instead.
+
+Pin and run from source (Bun 1.4.2+, Node 22.19+):
+
+```bash
+git clone --branch main https://github.com/WhiteTowerAI/ohmygame.git
+cd ohmygame
+bun install --frozen-lockfile
+export OHMYGAME_DAEMON_TOKEN  # required on studio machines; do not start tokenless
+bun run dev            # web renderer + local daemon (loopback only)
+# bun run dev:desktop  # Electron app; skip unless a desktop smoke is requested
+```
+
+Default loopback (**do not change the bind**):
+
+| Process | Address | Auth |
+|---------|---------|------|
+| Fastify daemon | `http://127.0.0.1:43110` (`GET /health` is public) | **Studio policy: set `OHMYGAME_DAEMON_TOKEN` before `bun run dev`.** Upstream is tokenless by default; do not run it that way here. |
+| Vite renderer | `http://127.0.0.1:43120` (proxies `/api` to the daemon) | talks to the daemon through the proxy |
+
+Desktop builds force `DAEMON_HOST=127.0.0.1` and pass a process-scoped token on stdin. **Never set `DAEMON_HOST=0.0.0.0`**, never tunnel the daemon, never put it on a `*.grudge-studio.com` host.
+
+Bring-your-own model keys (or Claude Code / Codex / OpenCode). Do not paste Grudge production secrets into this tool. Official release builds may send usage/crash telemetry; source `bun run dev` does not.
+
+MCP (Settings → MCP Server) exposes canvas, media generation, and playtest to other local agents via the upstream `ohmygame-studio` skill.
+
+Studio law:
+
+- Warlords source of truth stays Spawn `@racalvin/grudge-warlords` main.
+- Player key is still GrudgeID at `id.grudge-studio.com`. The project's Community / `games.ohmygame.ai` path is not player SSOT.
+- Shipped images and meshes are CDN-only: Kiln (unpublished), then Rook, then `assets.grudge-studio.com`. On a CDN miss, show the missing marker. Do not hot-link local or Community URLs.
+- Apache-2.0 allows commercial use with attribution when you redistribute or fork the software. Do not use the trademarked OhMyGame name or logo as Grudge branding.
 
 ---
 
