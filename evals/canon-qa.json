@@ -1,7 +1,7 @@
 {
   "id": "legion-canon-evals",
-  "version": "1.0.0",
-  "source": "ObjectStore api/v1/lore-canon.json 1.0.0-draft, listed in api/v1/canon-manifest.v1.json",
+  "version": "1.1.0",
+  "source": "ObjectStore api/v1/lore-canon.json 1.0.0-draft (8 gods: 3 patron, 5 race gods ratified 2026-11-23), listed in api/v1/canon-manifest.v1.json",
   "scoring": "An item passes when every mustInclude group has at least one case-insensitive match and no mustNotInclude term appears. The gate is pass rate >= threshold.",
   "threshold": 0.8,
   "items": [
@@ -38,7 +38,7 @@
       "id": "gods-01",
       "role": "lore",
       "kind": "fact",
-      "question": "How many gods are canon in Grudge Warlords, and who are they?",
+      "question": "Which gods are canon in Grudge Warlords?",
       "mustInclude": [
         [
           "odin"
@@ -50,13 +50,7 @@
           "omni"
         ]
       ],
-      "mustNotInclude": [
-        "zephyria",
-        "lorian",
-        "kragoth",
-        "grundor",
-        "thalindra"
-      ],
+      "mustNotInclude": [],
       "canonRef": null
     },
     {
@@ -101,6 +95,19 @@
       ],
       "mustNotInclude": [],
       "canonRef": "LORE-2C48-0DE6-46A1"
+    },
+    {
+      "id": "gods-05",
+      "role": "lore",
+      "kind": "fact",
+      "question": "Who is the god of the dwarves?",
+      "mustInclude": [
+        [
+          "grundor"
+        ]
+      ],
+      "mustNotInclude": [],
+      "canonRef": "LORE-FA91-62B4-C6D9"
     },
     {
       "id": "fac-01",
@@ -358,22 +365,21 @@
       "canonRef": null
     },
     {
-      "id": "neg-03",
+      "id": "gods-06",
       "role": "lore",
-      "kind": "refuse",
+      "kind": "fact",
       "question": "Describe the god Zephyria.",
       "mustInclude": [
         [
-          "not in canon",
-          "not canon",
-          "isn't canon",
-          "not ratified",
-          "unratified",
-          "isn't in canon"
+          "dragon"
+        ],
+        [
+          "flame",
+          "fire"
         ]
       ],
       "mustNotInclude": [],
-      "canonRef": null
+      "canonRef": "LORE-171A-5E22-539B"
     },
     {
       "id": "neg-04",
