@@ -82,13 +82,15 @@ The WhiteTowerAI/ohmygame project (Apache-2.0, beta) is a **local-first AI game 
 
 Legion Workers cannot reach a laptop's `127.0.0.1`. Do not add an `ohmygame` cloud chat role that pretends to drive the daemon. Point `director`, `dev`, `coder`, and `agentic` at this section instead.
 
-Pin and run from source (Bun 1.4.2+, Node 22.19+):
+Pin and run from source (Bun 1.4.2+, Node 22.19+). Audited upstream tip: `d6eac67856583820f2ff2795851fc3787fae02f5` (`WhiteTowerAI/ohmygame` `0.0.0-beta.5.11`).
 
 ```bash
-git clone --branch main https://github.com/WhiteTowerAI/ohmygame.git
+git clone https://github.com/WhiteTowerAI/ohmygame.git
 cd ohmygame
+git checkout d6eac67856583820f2ff2795851fc3787fae02f5
 bun install --frozen-lockfile
-export OHMYGAME_DAEMON_TOKEN  # required on studio machines; do not start tokenless
+export OHMYGAME_DAEMON_TOKEN="$(openssl rand -hex 32)"  # generated, non-empty; required on studio machines
+# start the daemon in this same shell so it inherits the token; do not start tokenless
 bun run dev            # web renderer + local daemon (loopback only)
 # bun run dev:desktop  # Electron app; skip unless a desktop smoke is requested
 ```
@@ -97,7 +99,7 @@ Default loopback (**do not change the bind**):
 
 | Process | Address | Auth |
 |---------|---------|------|
-| Fastify daemon | `http://127.0.0.1:43110` (`GET /health` is public) | **Studio policy: set `OHMYGAME_DAEMON_TOKEN` before `bun run dev`.** Upstream is tokenless by default; do not run it that way here. |
+| Fastify daemon | `http://127.0.0.1:43110` | **Studio policy: generate a non-empty `OHMYGAME_DAEMON_TOKEN` and start the daemon in that same shell (`bun run dev`).** Upstream is tokenless by default; do not run it that way here. Once the token is set, `GET /health` and other daemon HTTP calls require `Authorization: Bearer <token>` and return 401 without it. With the header, `/health` returns `{ "status": "ok" }`. |
 | Vite renderer | `http://127.0.0.1:43120` (proxies `/api` to the daemon) | talks to the daemon through the proxy |
 
 Desktop builds force `DAEMON_HOST=127.0.0.1` and pass a process-scoped token on stdin. **Never set `DAEMON_HOST=0.0.0.0`**, never tunnel the daemon, never put it on a `*.grudge-studio.com` host.
