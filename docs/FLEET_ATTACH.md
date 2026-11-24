@@ -38,7 +38,8 @@ git checkout d6eac67856583820f2ff2795851fc3787fae02f5
 bun install --frozen-lockfile
 export OHMYGAME_DAEMON_TOKEN="$(openssl rand -hex 32)"  # generated, non-empty; required on studio machines
 # start the daemon in this same shell so it inherits the token; do not start tokenless
-bun run dev            # 127.0.0.1:43120 renderer + 127.0.0.1:43110 daemon
+bun run dev            # starts the loopback daemon + Vite; the browser UI at :43120 will 401 once a token is set
+bun run dev:desktop    # token-required UI path (Electron injects the Bearer token)
 ```
 
 Guardrails for fleet agents:
@@ -46,6 +47,8 @@ Guardrails for fleet agents:
 - Leave `DAEMON_HOST` unset so the daemon stays on loopback. **Never set `DAEMON_HOST=0.0.0.0`**, and never tunnel or deploy the daemon.
 - Generate a non-empty `OHMYGAME_DAEMON_TOKEN` and start the daemon in that same shell with `bun run dev`. Upstream is tokenless by default; studio machines must not run it that way.
 - Once the token is set, daemon HTTP calls including `GET /health` need `Authorization: Bearer <token>` and return 401 without it.
+- With a token set, the browser UI at `bun run dev` (`http://127.0.0.1:43120`) will 401: the Vite `/api` proxy does not add `Authorization`, and the web renderer only sends `Bearer` inside Electron. Use `bun run dev:desktop` for the token-required UI, or call `http://127.0.0.1:43110` directly with `Authorization: Bearer <token>` (and the same for local MCP). Do not commit a token into `vite.config.ts`; a local, uncommitted proxy header is optional and must stay off git.
+- Keep the token on the workstation: never commit it, never put it in a tracked `.env`, and never paste it into chat, PRs, or logs.
 - Do not publish Warlords, Foundry, or fleet account flows through `games.ohmygame.ai`.
 - Shipped images and meshes are CDN-only: Kiln (unpublished), then Rook, then `assets.grudge-studio.com`. On a CDN miss, show the missing marker.
 - Keep Apache-2.0 attribution when redistributing or forking the software. Do not use the trademarked OhMyGame name or logo as Grudge branding.

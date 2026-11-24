@@ -91,8 +91,8 @@ git checkout d6eac67856583820f2ff2795851fc3787fae02f5
 bun install --frozen-lockfile
 export OHMYGAME_DAEMON_TOKEN="$(openssl rand -hex 32)"  # generated, non-empty; required on studio machines
 # start the daemon in this same shell so it inherits the token; do not start tokenless
-bun run dev            # web renderer + local daemon (loopback only)
-# bun run dev:desktop  # Electron app; skip unless a desktop smoke is requested
+bun run dev            # starts the loopback daemon + Vite; the browser UI at :43120 will 401 once a token is set
+bun run dev:desktop    # token-required UI path (Electron injects the Bearer token)
 ```
 
 Default loopback (**do not change the bind**):
@@ -100,7 +100,11 @@ Default loopback (**do not change the bind**):
 | Process | Address | Auth |
 |---------|---------|------|
 | Fastify daemon | `http://127.0.0.1:43110` | **Studio policy: generate a non-empty `OHMYGAME_DAEMON_TOKEN` and start the daemon in that same shell (`bun run dev`).** Upstream is tokenless by default; do not run it that way here. Once the token is set, `GET /health` and other daemon HTTP calls require `Authorization: Bearer <token>` and return 401 without it. With the header, `/health` returns `{ "status": "ok" }`. |
-| Vite renderer | `http://127.0.0.1:43120` (proxies `/api` to the daemon) | talks to the daemon through the proxy |
+| Vite renderer | `http://127.0.0.1:43120` | Proxies `/api` to `:43110` with no `Authorization` header. The web renderer (`runtimeHeaders()`) also sends none unless Electron is present, so the browser UI returns 401 once a token is set. Use `bun run dev:desktop` for the UI, or send `Authorization: Bearer <token>` on direct `:43110` calls. |
+
+With a token set, the browser UI at `bun run dev` (`http://127.0.0.1:43120`) will 401: the Vite `/api` proxy does not add `Authorization`, and the web renderer only sends `Bearer` inside Electron. Use `bun run dev:desktop` for the token-required UI, or call `http://127.0.0.1:43110` directly with `Authorization: Bearer <token>` (and the same for local MCP). Do not commit a token into `vite.config.ts`; a local, uncommitted proxy header is optional and must stay off git.
+
+Keep the token on the workstation: never commit it, never put it in a tracked `.env`, and never paste it into chat, PRs, or logs.
 
 Desktop builds force `DAEMON_HOST=127.0.0.1` and pass a process-scoped token on stdin. **Never set `DAEMON_HOST=0.0.0.0`**, never tunnel the daemon, never put it on a `*.grudge-studio.com` host.
 
