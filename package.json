@@ -1,6 +1,6 @@
 {
   "name": "grudge-legion-ai",
-  "version": "1.6.13",
+  "version": "1.6.14",
   "private": true,
   "description": "GRUDA Legion AI Hub — Gemini/Groq/Workers waterfall + Puter Fable/Astra opt-in + light ElevenLabs TTS",
   "scripts": {
