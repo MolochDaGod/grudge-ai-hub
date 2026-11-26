@@ -96,6 +96,105 @@ function fleetObs(env, ctx) {
   });
 }
 
+// ════════════════════════════════════════════════════════════════
+//  Enhanced Observability (Mission #18-19)
+// ════════════════════════════════════════════════════════════════
+
+function redactSensitive(value) {
+  if (!value) return value;
+  const str = String(value);
+  if (str.toLowerCase().includes('bearer ') || 
+      str.toLowerCase().includes('authorization') ||
+      str.toLowerCase().includes('api') ||
+      str.toLowerCase().includes('key') ||
+      str.toLowerCase().includes('token')) {
+    return '[REDACTED]';
+  }
+  return str;
+}
+
+function logStructuredRequest(env, { requestId, method, path, ip, userAgent }) {
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    requestId,
+    type: 'request',
+    method,
+    path,
+    ip,
+    userAgent,
+  };
+  console.log(JSON.stringify(logEntry));
+}
+
+function logStructuredError(env, { requestId, path, error, details, stack, ip }) {
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    requestId,
+    type: 'error',
+    error,
+    path,
+    details: redactSensitive(details),
+    stack: stack ? redactSensitive(stack) : undefined,
+    ip,
+  };
+  console.error(JSON.stringify(logEntry));
+}
+
+function getRateLimitForPath(pathname, auth, env) {
+  const isAdmin = auth.scope === 'admin';
+  
+  // Expensive generation/deploy routes get tighter limits
+  if (pathname.includes('/image/generate')) {
+    return {
+      rpm: isAdmin ? 60 : 10,
+      retryAfter: 120,
+      category: 'image_generation',
+    };
+  }
+  
+  if (pathname.includes('/audio/tts')) {
+    return {
+      rpm: isAdmin ? 20 : 4,
+      retryAfter: 300,
+      category: 'audio_tts',
+    };
+  }
+  
+  if (pathname.includes('/vision')) {
+    return {
+      rpm: isAdmin ? 100 : 20,
+      retryAfter: 90,
+      category: 'vision',
+    };
+  }
+  
+  if (pathname.includes('puter') || pathname.includes('fable') || pathname.includes('astra')) {
+    return {
+      rpm: parseInt(env.PUTER_RPM || '8', 10),
+      retryAfter: 180,
+      category: 'puter_premium',
+    };
+  }
+  
+  // Admin routes
+  if (pathname.startsWith('/v1/admin')) {
+    return {
+      rpm: parseInt(env.RATE_LIMIT_RPM_ADMIN || '300', 10),
+      retryAfter: 60,
+      category: 'admin',
+    };
+  }
+  
+  // Default chat/API routes
+  return {
+    rpm: isAdmin 
+      ? parseInt(env.RATE_LIMIT_RPM_ADMIN || '300', 10)
+      : (auth.rpmLimit || parseInt(env.RATE_LIMIT_RPM || '60', 10)),
+    retryAfter: 60,
+    category: 'default',
+  };
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -104,6 +203,7 @@ export default {
     const requestId = crypto.randomUUID();
     const obs = fleetObs(env, ctx);
     const t0 = Date.now();
+    const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
 
     // ── CORS preflight ─────────────────────────────────────────
     if (method === 'OPTIONS') {
@@ -111,6 +211,13 @@ export default {
     }
 
     try {
+      logStructuredRequest(env, {
+        requestId,
+        method,
+        path: url.pathname,
+        ip,
+        userAgent: redactSensitive(request.headers.get('User-Agent') || ''),
+      });
       // ── Maintenance mode check ─────────────────────────────────
       const maintenance = await env.KV.get('flag:maintenance');
       if (maintenance === 'true' && !url.pathname.startsWith('/v1/admin')) {
@@ -217,22 +324,39 @@ export default {
       // ── Auth required beyond this point ────────────────────────
       const auth = await authenticate(request, env);
       if (auth.error) {
+        logStructuredError(env, {
+          requestId,
+          path: url.pathname,
+          error: 'authentication_failed',
+          details: auth.error,
+          ip,
+        });
         return finish(obs, request, corsResponse(json({ error: auth.error }, 401), origin), t0);
       }
 
       // ── Rate limiting ──────────────────────────────────────────
-      const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+      const rateLimitConfig = getRateLimitForPath(url.pathname, auth, env);
       const rateKey = auth.keyId ? `rl:key:${auth.keyId}` : `rl:ip:${ip}`;
-      const rpm = auth.scope === 'admin'
-        ? parseInt(env.RATE_LIMIT_RPM_ADMIN || '300', 10)
-        : (auth.rpmLimit || parseInt(env.RATE_LIMIT_RPM || '60', 10));
-
-      const limited = await checkRateLimit(env.KV, rateKey, rpm, { failClosed: false });
+      
+      const limited = await checkRateLimit(env.KV, rateKey, rateLimitConfig.rpm, { failClosed: false });
       if (limited) {
         await logRequest(env, { requestId, apiKeyId: auth.keyId, role: null, provider: 'none', model: null, status: 'rate-limited', latencyMs: 0 });
-        const res = corsResponse(json({ error: 'Rate limit exceeded', retry_after: 60 }, 429), origin);
-        res.headers.set('Retry-After', '60');
-        res.headers.set('X-RateLimit-Limit', String(rpm));
+        logStructuredError(env, {
+          requestId,
+          path: url.pathname,
+          error: 'rate_limit_exceeded',
+          limit: rateLimitConfig.rpm,
+          ip,
+        });
+        const res = corsResponse(json({ 
+          error: 'Rate limit exceeded', 
+          retry_after: rateLimitConfig.retryAfter,
+          limit: rateLimitConfig.rpm,
+          path_category: rateLimitConfig.category,
+        }, 429), origin);
+        res.headers.set('Retry-After', String(rateLimitConfig.retryAfter));
+        res.headers.set('X-RateLimit-Limit', String(rateLimitConfig.rpm));
+        res.headers.set('X-Request-Id', requestId);
         return finish(obs, request, res, t0);
       }
 
@@ -310,6 +434,14 @@ export default {
       return finish(obs, request, corsResponse(json({ error: 'Not found' }, 404), origin), t0);
     } catch (err) {
       obs?.error(String(err), { path: url.pathname, request_id: requestId });
+      logStructuredError(env, {
+        requestId,
+        path: url.pathname,
+        error: 'unhandled_exception',
+        details: err.message || String(err),
+        stack: err.stack,
+        ip,
+      });
       console.error('Unhandled error:', err);
       return corsResponse(json({ error: 'Internal server error', request_id: requestId }, 500), origin);
     }
@@ -336,6 +468,8 @@ export default {
 };
 
 function finish(obs, request, response, t0) {
+  const latencyMs = Date.now() - t0;
+  
   if (obs) {
     const path = new URL(request.url).pathname;
     if (!path.startsWith('/v1/admin')) {
@@ -343,11 +477,36 @@ function finish(obs, request, response, t0) {
         method: request.method,
         path,
         status: response.status,
-        latency_ms: Date.now() - t0,
+        latency_ms: latencyMs,
       });
     }
   }
-  return response;
+  
+  // Add request ID and latency headers to all responses
+  const headers = new Headers(response.headers);
+  if (!headers.has('X-Request-Id')) {
+    const url = new URL(request.url);
+    const requestId = url.searchParams.get('request_id') || crypto.randomUUID();
+    headers.set('X-Request-Id', requestId);
+  }
+  headers.set('X-Response-Time', `${latencyMs}ms`);
+  
+  // Log structured response
+  const path = new URL(request.url).pathname;
+  console.log(JSON.stringify({
+    timestamp: new Date().toISOString(),
+    type: 'response',
+    method: request.method,
+    path,
+    status: response.status,
+    latency_ms: latencyMs,
+  }));
+  
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 
@@ -360,6 +519,12 @@ async function authenticate(request, env) {
   const apiKey = header.startsWith('Bearer ') ? header.slice(7) : header;
 
   if (!apiKey) {
+    console.warn(JSON.stringify({
+      timestamp: new Date().toISOString(),
+      type: 'auth',
+      status: 'missing_header',
+      path: new URL(request.url).pathname,
+    }));
     return { error: 'Missing Authorization header (Bearer <api-key|grudge_jwt>)' };
   }
 
@@ -403,9 +568,22 @@ async function authenticate(request, env) {
     ).bind(keyHash).first();
 
     if (!row) {
+      console.warn(JSON.stringify({
+        timestamp: new Date().toISOString(),
+        type: 'auth',
+        status: 'invalid_key',
+        path: new URL(request.url).pathname,
+      }));
       return { error: 'Invalid API key or JWT' };
     }
     if (!row.enabled) {
+      console.warn(JSON.stringify({
+        timestamp: new Date().toISOString(),
+        type: 'auth',
+        status: 'disabled_key',
+        keyId: row.id,
+        path: new URL(request.url).pathname,
+      }));
       return { error: 'API key disabled' };
     }
 
@@ -416,7 +594,13 @@ async function authenticate(request, env) {
     return { keyId: row.id, name: row.name, scope: row.scope, tier: row.tier, rpmLimit: row.rpm_limit, authType: 'api_key' };
   } catch (err) {
     // D1 unavailable — allow with default limits if key matches env fallback
-    console.warn('D1 auth lookup failed, checking env fallback:', err.message);
+    console.warn(JSON.stringify({
+      timestamp: new Date().toISOString(),
+      type: 'auth',
+      status: 'd1_unavailable',
+      error: err.message,
+      path: new URL(request.url).pathname,
+    }));
     const fallbackKey = env.VPS_INTERNAL_KEY;
     if (fallbackKey && apiKey === fallbackKey) {
       return { keyId: 'env-fallback', name: 'internal', scope: 'admin', tier: 'internal', rpmLimit: 300, authType: 'env' };
@@ -510,16 +694,20 @@ function isFleetServiceKey(auth) {
 
 /** GET /health · /api/health — fleet health + GRUDA Agent status-bar fields */
 async function handleHealth(env) {
+  const healthStart = Date.now();
   const vpsStatus = await getVpsHealthStatus(env);
   const uiOrigin = (env.UI_ORIGIN || 'https://grudaagent.vercel.app').replace(/\/$/, '');
 
   // Merge UI /api/health (Grok XAI + server hub key flags) when reachable
   let ui = null;
+  let uiLatencyMs = null;
   try {
+    const uiStart = Date.now();
     const r = await fetch(`${uiOrigin}/api/health`, {
       signal: AbortSignal.timeout(4500),
       headers: { Accept: 'application/json' },
     });
+    uiLatencyMs = Date.now() - uiStart;
     if (r.ok) ui = await r.json();
   } catch {
     /* UI probe optional */
@@ -530,12 +718,61 @@ async function handleHealth(env) {
   const grudgeAi = true;
   const grok = !!(ui?.grok || env.XAI_API_KEY);
 
+  // Service metrics
+  let dbHealthy = false;
+  let kvHealthy = false;
+  let dbLatencyMs = null;
+  let kvLatencyMs = null;
+  
+  try {
+    const dbStart = Date.now();
+    await env.DB.prepare('SELECT 1').first();
+    dbLatencyMs = Date.now() - dbStart;
+    dbHealthy = true;
+  } catch {
+    dbHealthy = false;
+  }
+  
+  try {
+    const kvStart = Date.now();
+    await env.KV.get('health:check');
+    kvLatencyMs = Date.now() - kvStart;
+    kvHealthy = true;
+  } catch {
+    kvHealthy = false;
+  }
+
   return json({
     status: 'ok',
     ok: true,
     service: 'grudge-ai-hub',
     version: HUB_VERSION,
     environment: env.ENVIRONMENT || 'production',
+    observability: {
+      structured_logging: 'enabled',
+      request_tracking: 'enabled',
+      error_redaction: 'enabled',
+      latency_tracking: 'enabled',
+    },
+    service_metrics: {
+      db_healthy: dbHealthy,
+      db_latency_ms: dbLatencyMs,
+      kv_healthy: kvHealthy,
+      kv_latency_ms: kvLatencyMs,
+      ui_latency_ms: uiLatencyMs,
+      health_response_ms: Date.now() - healthStart,
+    },
+    rate_limiting: {
+      enabled: true,
+      per_ip: true,
+      per_user: true,
+      default_rpm: parseInt(env.RATE_LIMIT_RPM || '60', 10),
+      admin_rpm: parseInt(env.RATE_LIMIT_RPM_ADMIN || '300', 10),
+      image_gen_rpm: 10,
+      tts_rpm: 4,
+      puter_rpm: parseInt(env.PUTER_RPM || '8', 10),
+      retry_after_header: true,
+    },
     providers: {
       gemini_byok: geminiOk ? 'configured' : 'missing',
       workers_ai: 'available',
